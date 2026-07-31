@@ -1,0 +1,8 @@
+# The workbook is written byte-for-byte by the app — never touch it.
+*.xlsx binary
+
+# Everything else is text, stored and checked out with LF so the workflow's
+# shell script is valid on the Linux runner.
+* text=auto eol=lf
+
+assets/vendor/** linguist-vendored

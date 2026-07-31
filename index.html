@@ -1,0 +1,226 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Expense Tracker</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>&#128181;</text></svg>">
+<link rel="stylesheet" href="assets/styles.css">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <span class="brand-mark" aria-hidden="true"></span>
+    <span class="brand-name">Expense Tracker</span>
+  </div>
+
+  <div class="topbar-right">
+    <button id="sync-pill" class="pill" type="button" aria-live="polite">
+      <span class="pill-dot"></span><span id="sync-text">Loading…</span>
+    </button>
+    <button id="btn-theme" class="icon-btn" type="button" title="Toggle light / dark" aria-label="Toggle light or dark theme">◐</button>
+    <button id="btn-settings" class="icon-btn" type="button" title="Settings" aria-label="Settings">⚙</button>
+    <button id="btn-add" class="btn btn-primary" type="button">＋ Add expense</button>
+  </div>
+</header>
+
+<div id="banner" class="banner" hidden>
+  <span id="banner-text"></span>
+  <button id="banner-action" class="btn btn-ghost btn-sm" type="button">Connect</button>
+  <button id="banner-close" class="icon-btn icon-btn-sm" type="button" aria-label="Dismiss">✕</button>
+</div>
+
+<main class="viz-root">
+
+  <!-- ── KPI row ───────────────────────────────────────────────────────── -->
+  <section class="kpis" aria-label="Summary">
+    <article class="tile">
+      <h2 class="tile-label" id="kpi-period-label">This month</h2>
+      <p class="tile-value" id="kpi-month">—</p>
+      <p class="tile-foot" id="kpi-month-delta">&nbsp;</p>
+    </article>
+    <article class="tile">
+      <h2 class="tile-label">Today</h2>
+      <p class="tile-value" id="kpi-today">—</p>
+      <p class="tile-foot" id="kpi-today-count">&nbsp;</p>
+    </article>
+    <article class="tile">
+      <h2 class="tile-label">Daily average</h2>
+      <p class="tile-value" id="kpi-avg">—</p>
+      <p class="tile-foot" id="kpi-avg-foot">&nbsp;</p>
+    </article>
+    <article class="tile">
+      <h2 class="tile-label">Top category</h2>
+      <p class="tile-value tile-value-sm" id="kpi-top">—</p>
+      <p class="tile-foot" id="kpi-top-foot">&nbsp;</p>
+    </article>
+  </section>
+
+  <!-- ── Breakdown ─────────────────────────────────────────────────────── -->
+  <section class="panel" aria-label="Spend by category">
+    <div class="panel-head">
+      <h2 class="panel-title">Spend by category</h2>
+      <span class="panel-sub" id="breakdown-sub"></span>
+    </div>
+    <div id="breakdown" class="breakdown"></div>
+  </section>
+
+  <!-- ── Filters ───────────────────────────────────────────────────────── -->
+  <section class="toolbar" aria-label="Filters">
+    <label class="field field-inline">
+      <span class="field-label">Month</span>
+      <select id="f-month"></select>
+    </label>
+    <label class="field field-inline">
+      <span class="field-label">Category</span>
+      <select id="f-category"><option value="">All categories</option></select>
+    </label>
+    <label class="field field-inline field-grow">
+      <span class="field-label">Search</span>
+      <input id="f-search" type="search" placeholder="Description, notes, method…" autocomplete="off">
+    </label>
+    <button id="f-clear" class="btn btn-ghost" type="button">Clear</button>
+    <button id="btn-download" class="btn btn-ghost" type="button" title="Download the .xlsx file">↓ Excel</button>
+  </section>
+
+  <!-- ── Table ─────────────────────────────────────────────────────────── -->
+  <section class="panel panel-flush" aria-label="Expenses">
+    <div class="table-scroll">
+      <table class="grid">
+        <thead>
+          <tr>
+            <th class="sortable" data-sort="date" scope="col">Date</th>
+            <th scope="col">Description</th>
+            <th scope="col">Category</th>
+            <th scope="col" class="col-method">Method</th>
+            <th class="sortable num" data-sort="amount" scope="col">Amount</th>
+            <th scope="col" class="col-actions"><span class="sr-only">Actions</span></th>
+          </tr>
+        </thead>
+        <tbody id="rows"></tbody>
+        <tfoot>
+          <tr>
+            <td colspan="4" class="foot-label">Showing <span id="count">0</span> of <span id="count-all">0</span></td>
+            <td class="num" id="foot-total">—</td>
+            <td></td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+    <div id="empty" class="empty" hidden></div>
+  </section>
+
+  <footer class="pagefoot">
+    Data lives in <code id="foot-path">data/expenses.xlsx</code> in
+    <code id="foot-repo">this repository</code> — every change is a commit.
+  </footer>
+</main>
+
+<!-- ── Add / edit dialog ───────────────────────────────────────────────── -->
+<dialog id="dlg-entry" class="dlg">
+  <form id="form-entry" method="dialog">
+    <h2 class="dlg-title" id="entry-title">Add expense</h2>
+
+    <div class="form-grid">
+      <label class="field">
+        <span class="field-label">Date <em>*</em></span>
+        <input name="date" type="date" required>
+      </label>
+      <label class="field">
+        <span class="field-label">Amount <em>*</em></span>
+        <input name="amount" type="number" step="0.01" min="0" required inputmode="decimal" placeholder="0.00">
+      </label>
+      <label class="field field-span">
+        <span class="field-label">Description <em>*</em></span>
+        <input name="description" type="text" required maxlength="120" placeholder="e.g. Team lunch at Ubud">
+      </label>
+      <label class="field">
+        <span class="field-label">Category</span>
+        <select name="category" id="entry-category"></select>
+      </label>
+      <label class="field">
+        <span class="field-label">Payment method</span>
+        <select name="method" id="entry-method"></select>
+      </label>
+      <label class="field field-span">
+        <span class="field-label">Notes</span>
+        <textarea name="notes" rows="2" maxlength="300" placeholder="Optional"></textarea>
+      </label>
+    </div>
+
+    <p class="dlg-error" id="entry-error" hidden></p>
+
+    <div class="dlg-actions">
+      <button type="button" class="btn btn-ghost" data-close>Cancel</button>
+      <button type="submit" class="btn btn-primary" id="entry-submit">Save expense</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- ── Settings dialog ─────────────────────────────────────────────────── -->
+<dialog id="dlg-settings" class="dlg">
+  <form id="form-settings" method="dialog">
+    <h2 class="dlg-title">Settings</h2>
+
+    <div class="repo-facts">
+      <div><span>Repository</span><code id="set-repo">—</code></div>
+      <div><span>Branch</span><code id="set-branch">—</code></div>
+      <div><span>File</span><code id="set-path">—</code></div>
+    </div>
+
+    <label class="field">
+      <span class="field-label">GitHub token</span>
+      <input name="token" id="set-token" type="password" autocomplete="off" spellcheck="false"
+             placeholder="github_pat_… or ghp_…">
+      <span class="field-hint">
+        Needed to save changes. Use a <strong>fine-grained</strong> token scoped to this
+        repository only, with <strong>Contents: Read and write</strong>. It is stored in this
+        browser (localStorage) and sent only to api.github.com — never committed.
+      </span>
+    </label>
+
+    <div class="form-grid">
+      <label class="field">
+        <span class="field-label">Currency</span>
+        <input name="currency" id="set-currency" type="text" maxlength="3" placeholder="INR">
+      </label>
+      <label class="field">
+        <span class="field-label">Locale</span>
+        <input name="locale" id="set-locale" type="text" placeholder="en-IN">
+      </label>
+    </div>
+
+    <p class="dlg-error" id="set-error" hidden></p>
+
+    <div class="dlg-actions">
+      <button type="button" class="btn btn-danger-ghost" id="set-forget">Forget token</button>
+      <span class="spacer"></span>
+      <button type="button" class="btn btn-ghost" data-close>Cancel</button>
+      <button type="submit" class="btn btn-primary" id="set-submit">Save &amp; verify</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- ── Delete confirm ──────────────────────────────────────────────────── -->
+<dialog id="dlg-delete" class="dlg dlg-sm">
+  <form method="dialog">
+    <h2 class="dlg-title">Delete this expense?</h2>
+    <p class="dlg-body" id="del-summary"></p>
+    <p class="dlg-note">This removes the row from the Excel file and commits the change.</p>
+    <div class="dlg-actions">
+      <button type="button" class="btn btn-ghost" data-close>Cancel</button>
+      <button type="button" class="btn btn-danger" id="del-confirm">Delete</button>
+    </div>
+  </form>
+</dialog>
+
+<div id="tooltip" class="tooltip" hidden></div>
+<div id="toasts" class="toasts" aria-live="polite"></div>
+
+<script src="assets/vendor/xlsx.full.min.js"></script>
+<script src="assets/config.js"></script>
+<script src="assets/app.js"></script>
+</body>
+</html>

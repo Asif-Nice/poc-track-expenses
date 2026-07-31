@@ -1,0 +1,9 @@
+node_modules/
+package.json
+package-lock.json
+.DS_Store
+Thumbs.db
+*.log
+
+# Excel lock files, in case you open the workbook locally
+~$*.xlsx
