@@ -883,15 +883,21 @@ async function submitSettings(e) {
   state.token = token;
   try {
     const res = await gh(`https://api.github.com/repos/${cfg.owner}/${cfg.repo}`);
-    if (res.status === 404) throw new Error('Repository not found, or the token cannot see it.');
-    const repo = await res.json();
-    if (!repo.permissions || !repo.permissions.push) {
-      throw new Error('This token has read-only access. Grant Contents: Read and write.');
+    if (res.status === 404) {
+      throw new Error(`Cannot see ${cfg.owner}/${cfg.repo}. Check the token is scoped to that repository.`);
     }
+    const repo = await res.json();
     localStorage.setItem(LS.token, token);
     err.hidden = true;
     $('#dlg-settings').close();
-    toast('ok', 'Token verified — changes will be committed.');
+
+    // Reported permissions vary by token type, so this is advisory — the real
+    // test is the first save, which reports its own error if write is missing.
+    const writable = repo.permissions && repo.permissions.push;
+    toast(writable ? 'ok' : 'info',
+      writable
+        ? 'Token verified — changes will be committed.'
+        : 'Token accepted, but write access could not be confirmed. If saving fails, grant Contents: Read and write.');
     showBanner(false);
     await load();
     if (queue.length) flush();
