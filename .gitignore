@@ -7,3 +7,6 @@ Thumbs.db
 
 # Excel lock files, in case you open the workbook locally
 ~$*.xlsx
+
+# The workbook lives in the private data repo, never here.
+data/

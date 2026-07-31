@@ -1,7 +1,7 @@
 name: Deploy to GitHub Pages
 
-# Every expense you add, edit, or delete in the app commits data/expenses.xlsx,
-# which lands here and republishes the site with the updated file.
+# Publishes the app itself. Expense edits commit to the private data repo, not
+# here, so day-to-day use does not trigger a deploy — only code changes do.
 on:
   push:
     branches: [main]
@@ -12,7 +12,6 @@ permissions:
   pages: write
   id-token: write
 
-# Rapid edits queue up; only the newest data matters, so supersede in-flight runs.
 concurrency:
   group: pages
   cancel-in-progress: true
@@ -31,28 +30,13 @@ jobs:
         uses: actions/configure-pages@v5
 
       # No build step — the app is plain HTML/CSS/JS with SheetJS vendored in.
-      #
-      # A Pages site is reachable by anyone with the URL even when the repository
-      # is private (access-controlled Pages is Enterprise-only), so data/ is left
-      # out of the published site by default: the app loads the workbook through
-      # the GitHub API with your token instead. Set a repository variable
-      # PUBLISH_DATA=true if you want the .xlsx served from the site as well
-      # (anonymous visitors could then read it).
-      - name: Stage site
-        run: |
-          mkdir -p _site
-          rsync -a --exclude='.git' --exclude='.github' --exclude='_site' --exclude='data' ./ _site/
-          if [ "${{ vars.PUBLISH_DATA }}" = "true" ]; then
-            cp -r data _site/
-            echo "PUBLISH_DATA=true — the workbook is published with the site."
-          else
-            echo "data/ excluded from the published site (default)."
-          fi
-
+      # This repository holds app code only. The workbook lives in a separate
+      # private repo (see assets/config.js) and is fetched at runtime with the
+      # user's token, so nothing published here contains expense data.
       - name: Upload site
         uses: actions/upload-pages-artifact@v3
         with:
-          path: _site
+          path: .
 
       - name: Deploy
         id: deployment
