@@ -595,8 +595,8 @@ function renderTable() {
       );
     } else if (!state.token) {
       empty.append(
-        el('strong', null, 'Not connected'),
-        el('span', null, 'Add a GitHub token in Settings to load and edit your expenses.')
+        el('strong', null, 'No expenses yet'),
+        el('span', null, 'Add a GitHub token in Settings to start recording expenses.')
       );
     } else {
       empty.append(
@@ -968,8 +968,9 @@ async function load() {
     if (state.token) {
       result = await fetchViaApi();
     } else {
-      // data/ is not published with the site by default, so a 404 here is the
-      // normal unauthenticated case, not an error.
+      // Without a token, read the copy published alongside the page. If it is
+      // missing (never deployed, or excluded from the artifact), fall back to an
+      // empty read-only view rather than an error.
       try {
         result = await fetchPublished();
       } catch {

@@ -1,7 +1,7 @@
 name: Deploy to GitHub Pages
 
-# Publishes the app itself. Expense edits commit to the private data repo, not
-# here, so day-to-day use does not trigger a deploy — only code changes do.
+# Every expense you add, edit, or delete commits data/expenses.xlsx to this
+# repository, which lands here and republishes the site with the updated file.
 on:
   push:
     branches: [main]
@@ -29,10 +29,9 @@ jobs:
       - name: Configure Pages
         uses: actions/configure-pages@v5
 
-      # No build step — the app is plain HTML/CSS/JS with SheetJS vendored in.
-      # This repository holds app code only. The workbook lives in a separate
-      # private repo (see assets/config.js) and is fetched at runtime with the
-      # user's token, so nothing published here contains expense data.
+      # No build step — the app is plain HTML/CSS/JS with SheetJS vendored in,
+      # and data/expenses.xlsx ships with it so the page can be read without a
+      # token. Note this repo is public, so that file is public too.
       - name: Upload site
         uses: actions/upload-pages-artifact@v3
         with:
