@@ -7,3 +7,9 @@ Thumbs.db
 
 # Excel lock files, in case you open the workbook locally
 ~$*.xlsx
+
+# Screenshots and workbooks produced by local test runs
+*.png
+!assets/**/*.png
+exported.xlsx
+built.xlsx
