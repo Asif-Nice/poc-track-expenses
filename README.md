@@ -12,13 +12,17 @@ Set this in ⚙ Settings. The app works the same either way; only the storage ch
 
 | | Setup | Good for | Watch out for |
 |---|---|---|---|
-| **An Excel file on this device** *(default)* | Pick a `.xlsx` once | Everyday use. No account, no token, works offline. Put the file in OneDrive and it is backed up and synced | Chrome/Edge on a computer only. Browsers forget file permission on restart, so one click to reconnect per session |
+| **An Excel file on this device** | Pick a `.xlsx` once | Everyday use. No account, no token, works offline. Put the file in OneDrive and it is backed up and synced | Chrome/Edge on a computer only. Browsers forget file permission on restart, so one click to reconnect per session |
 | **This browser** | Nothing | Phones, and Firefox | Lives on that device only. Clearing site data erases it — export a copy now and then |
-| **A GitHub repository** | A fine-grained token | Automatic sync between devices | Needs the token, and on a public repo the data is world-readable |
+| **A GitHub repository** *(default)* | A fine-grained token, once per browser | Automatic sync between devices | Needs the token, and on a public repo the data is world-readable |
 
-**There is no token in the first two modes.** If you want one device and no accounts, take
-the default: open the app, ⚙, *Create new…*, save `wedding-budget.xlsx` into your OneDrive
-folder, done.
+The default is set by `defaultMode` in `assets/config.js` — currently `'github'`, so a new
+device lands there and asks for a token once. Change it to `'file'` or `'browser'` if you
+would rather not use a token at all; whatever you pick in ⚙ Settings on a device wins over
+it from then on.
+
+**The token is entered once per browser and then remembered** (`localStorage`). You are not
+asked again on that device — not on reload, not tomorrow. A second device asks once too.
 
 Moving between devices without GitHub: **↓ Export** on one, **↑ Import** on the other.
 
@@ -26,9 +30,20 @@ Moving between devices without GitHub: **↓ Export** on one, **↑ Import** on 
 
 Not because of multiple users. GitHub refuses **anonymous writes** to any repository,
 including your own, so without a token the page could read the workbook but never save a
-change. A token also cannot be committed into `config.js`: this repo is public, so it would
-be visible to everyone, and GitHub's secret scanner revokes tokens the moment they are
-pushed.
+change.
+
+**The token cannot be shipped in `assets/config.js`**, and not merely as a matter of taste:
+
+- Every file in a repository published to Pages is served on a public URL — that holds
+  whether the repository is private or not, because the *site* is public either way. A
+  token written there is readable by anyone who views source, and one with
+  `Contents: Read and write` lets a stranger rewrite the repository.
+- GitHub's secret scanning revokes tokens found in pushed code, usually within minutes. It
+  would stop working almost immediately.
+
+There is no way around this for a page with no backend: any credential a static page can
+read, its readers can read too. Entering it once per browser is the workaround, and it is
+why the app never asks twice.
 
 ## The model
 

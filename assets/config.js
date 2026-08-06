@@ -15,6 +15,19 @@ window.EXPENSE_CONFIG = {
   budgetSheet: 'Budget',
   paymentSheet: 'Payments',
 
+  /* Where a browser that has not chosen yet should keep the budget:
+   * 'github' | 'file' | 'browser'. Once you pick something in Settings, that
+   * choice wins on that device and this is ignored.
+   *
+   * There is deliberately no token here. This file is served publicly from the
+   * Pages site — as is any file in a repository published to Pages, private or
+   * not — so a token written here would be readable by anyone, and one with
+   * Contents: Read and write lets a stranger rewrite the repository. GitHub's
+   * secret scanning also revokes tokens found in pushed code, so it would stop
+   * working within minutes. Enter it once per browser in Settings instead; it
+   * is kept in localStorage and never leaves for anywhere but api.github.com. */
+  defaultMode: 'github',
+
   locale: 'en-IN',
   currency: 'INR',
 

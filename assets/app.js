@@ -73,6 +73,7 @@ const cfg = (() => {
     payers: base.payers || [],
     methods: base.methods || ['Other'],
     starterItems: base.starterItems || [],
+    defaultMode: base.defaultMode || '',
   };
 })();
 
@@ -749,9 +750,11 @@ const STORES = { file: fileStore, browser: browserStore, github: githubStore };
 
 const activeStore = () => STORES[state.mode] || browserStore;
 
-/* Whatever the browser can actually do, preferring a real file on disk. An old
-   token from the previous version of this app keeps that setup working. */
+/* What a browser that has never chosen should use: the configured preference
+   when this browser can honour it, else the best thing it can actually do. */
 function defaultMode() {
+  const wanted = cfg.defaultMode;
+  if (wanted && STORES[wanted] && STORES[wanted].available()) return wanted;
   if (fileStore.available()) return 'file';
   if (state.token && githubStore.available()) return 'github';
   return 'browser';
@@ -807,6 +810,8 @@ function commitMessage(ops) {
     if (op.kind === 'item-del') return `Delete budget item ${op.label || op.id}`;
     if (op.kind === 'pay') return `${op.isNew ? 'Record' : 'Update'} payment: ${fmtMoney(op.row.amount)} by ${op.row.payer} for ${op.itemName}`;
     if (op.kind === 'pay-del') return `Delete payment ${op.label || op.id}`;
+    if (op.kind === 'switch') return 'Move the wedding budget into this repository';
+    if (op.kind === 'import') return 'Import wedding budget from a workbook';
   }
   return `Update wedding budget (${ops.length} changes)`;
 }
@@ -2274,10 +2279,14 @@ async function submitSettings(e) {
   err.hidden = true;
   $('#dlg-settings').close();
 
+  // Always re-ask the store whether it can write. Staying in the same mode and
+  // supplying the missing token is the ordinary case, and only recomputing this
+  // on a mode change left it stuck read-only with the token sitting right there.
+  state.blocked = await activeStore().restore();
+
   if (switched) {
     // Carry what is on screen into the new home rather than silently losing it.
     const carry = { items: state.items, payments: state.payments };
-    state.blocked = await activeStore().restore();
     if (canWrite() && (carry.items.length || carry.payments.length)) {
       try {
         await activeStore().write(carry, [{ kind: 'switch' }]);
@@ -2291,7 +2300,13 @@ async function submitSettings(e) {
     } else {
       await load();
     }
+  } else if (canWrite()) {
+    await load();                       // newly authorised — read the real thing
+  } else {
+    setSync('blocked');
   }
+
+  renderBlockedBanner();
   renderAll();
   if (queue.length) flush();
 
