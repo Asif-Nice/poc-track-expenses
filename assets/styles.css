@@ -2,12 +2,10 @@
    Light and dark are each selected, not flipped: every hue is stepped for its
    own surface. Text always wears ink tokens, never a series colour.
 
-   Slot 1 of the categorical palette (blue) is reserved throughout for "money
-   paid" — the meter fill, the progress bars, the funding line — so a person is
-   never mistaken for it. People take slots 2–8. That subsequence was run
-   through the palette validator against both surfaces below: all checks pass,
-   with three light-mode hues under 3:1 contrast, which the visible direct
-   labels, the legend and the tables relieve. */
+   Colour carries one meaning here — how much money — on a single blue. There
+   is no categorical palette: people are told apart by row and column labels,
+   not by hue, which is what lets any number of relatives fit. See the note
+   above renderSplitChart in app.js for why that is not merely a simplification. */
 :root {
   color-scheme: light;
 
@@ -124,6 +122,12 @@
 
 * { box-sizing: border-box; }
 
+/* The `hidden` attribute is a user-agent style, so ANY author rule setting
+   display beats it — .banner{display:flex} and .btn{display:inline-flex} both
+   did, leaving elements on screen that JS believed it had hidden. One rule,
+   stated once, rather than a per-component patch each time it bites. */
+[hidden] { display: none !important; }
+
 body {
   margin: 0;
   background: var(--plane);
@@ -179,7 +183,7 @@ body {
 .pill[data-state="ok"]       .pill-dot { background: var(--good); }
 .pill[data-state="saving"]   .pill-dot { background: var(--warning); animation: pulse 1s ease-in-out infinite; }
 .pill[data-state="error"]    .pill-dot { background: var(--critical); }
-.pill[data-state="readonly"] .pill-dot { background: var(--warning); }
+.pill[data-state="blocked"]  .pill-dot { background: var(--warning); }
 
 @keyframes pulse { 50% { opacity: .3; } }
 
@@ -329,8 +333,6 @@ main {
 }
 .legend:empty { display: none; }
 .legend li { display: inline-flex; align-items: center; gap: 7px; }
-/* The attribute has to beat the display rule above, or a hidden key still shows. */
-.legend li[hidden] { display: none; }
 .key { width: 10px; height: 10px; border-radius: 3px; flex: none; }
 .key-paid      { background: var(--series-1); }
 .key-remaining { background: var(--series-1-soft); }
@@ -581,6 +583,30 @@ code {
 .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 13px; }
 .dlg-actions { display: flex; gap: 8px; justify-content: flex-end; align-items: center; }
 .dlg-actions .spacer { margin-right: auto; }
+
+/* ── Storage picker ──────────────────────────────────────────────────── */
+.mode-panel {
+  display: flex; flex-direction: column; gap: 12px; align-items: flex-start;
+  padding: 14px 15px;
+  background: var(--surface-2);
+  border: 1px solid var(--border); border-radius: var(--r-md);
+}
+.mode-hint { margin: 0; font-size: 13px; line-height: 1.5; color: var(--ink-2); }
+.mode-note { margin: 0; font-size: 12px; line-height: 1.5; color: var(--ink-muted); }
+.mode-panel .repo-facts { background: var(--surface-1); width: 100%; }
+.mode-panel .field { width: 100%; }
+
+.file-row {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap; width: 100%;
+}
+.file-name {
+  flex: 1 1 140px; min-width: 0;
+  padding: 6px 10px;
+  background: var(--surface-1);
+  border: 1px solid var(--border); border-radius: var(--r-md);
+  font-size: 13px; color: var(--ink);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
 
 .repo-facts {
   display: flex; flex-direction: column; gap: 6px;

@@ -1,23 +1,34 @@
 # Wedding Budget
 
-A single-page wedding budget tracker whose data is an Excel file in this repository. Record
-what each part of the wedding is expected to cost, then record every payment against it —
-including **who in the family paid**. Each change is written into the workbook and committed
-through the GitHub API. No server, no database, no build step.
+A single-page wedding budget tracker. Record what each part of the wedding is expected to
+cost, then record every payment against it — including **who in the family paid**. No
+server, no database, no build step.
 
 **Live:** https://asif-nice.github.io/poc-track-expenses/
 
-```
-browser ──① GET  data/expenses.xlsx        (published with the site, no token needed)
-   │
-   ├──② edit in memory
-   └──③ PUT /repos/<owner>/<repo>/contents/data/expenses.xlsx
-                with the current sha + Bearer <your token>  ──▶  one commit per change
-                                                                       │
-                                                        Pages workflow republishes
-```
+## Where your data lives — pick one
 
-Reading is anonymous. Writing needs a token, entered once per browser.
+Set this in ⚙ Settings. The app works the same either way; only the storage changes.
+
+| | Setup | Good for | Watch out for |
+|---|---|---|---|
+| **An Excel file on this device** *(default)* | Pick a `.xlsx` once | Everyday use. No account, no token, works offline. Put the file in OneDrive and it is backed up and synced | Chrome/Edge on a computer only. Browsers forget file permission on restart, so one click to reconnect per session |
+| **This browser** | Nothing | Phones, and Firefox | Lives on that device only. Clearing site data erases it — export a copy now and then |
+| **A GitHub repository** | A fine-grained token | Automatic sync between devices | Needs the token, and on a public repo the data is world-readable |
+
+**There is no token in the first two modes.** If you want one device and no accounts, take
+the default: open the app, ⚙, *Create new…*, save `wedding-budget.xlsx` into your OneDrive
+folder, done.
+
+Moving between devices without GitHub: **↓ Export** on one, **↑ Import** on the other.
+
+### Why the GitHub mode needs a token at all
+
+Not because of multiple users. GitHub refuses **anonymous writes** to any repository,
+including your own, so without a token the page could read the workbook but never save a
+change. A token also cannot be committed into `config.js`: this repo is public, so it would
+be visible to everyone, and GitHub's secret scanner revokes tokens the moment they are
+pushed.
 
 ## The model
 
@@ -32,7 +43,9 @@ Several people can pay towards the same item, and one person can pay towards man
 split is the point: the app is built to answer *"catering is ₹5 L, we've paid ₹2.1 L — and
 who put that in?"* at a glance.
 
-## Setup
+## Setup for the GitHub mode only
+
+Skip this entirely unless you chose *A GitHub repository*.
 
 **1 · Create a token** — [Settings → Developer settings → Fine-grained tokens](https://github.com/settings/personal-access-tokens/new):
 
@@ -42,12 +55,11 @@ who put that in?"* at a glance.
 | Permissions | **Contents: Read and write** |
 | Expiration | your call — GitHub emails you before it lapses |
 
-**2 · Open the site, click ⚙, paste the token, save.** It is verified, then kept in that
-browser's `localStorage` and sent only to `api.github.com`. It is never committed. Repeat
-once per device.
+**2 · ⚙ → Keep the budget in → A GitHub repository → paste the token → Save.** It is
+verified, then kept in that browser's `localStorage` and sent only to `api.github.com`. It
+is never committed. Repeat once per device.
 
-Pages is already enabled (*Settings → Pages → Source: GitHub Actions*) and the workflow
-runs on every push to `main`.
+Each change becomes one commit, and the Pages workflow republishes the site.
 
 ## Using it
 
@@ -59,19 +71,18 @@ runs on every push to `main`.
 | **See an item's payments** | ▸ on its row in the *Budget items* table |
 | **Filter** | category, person, or free-text search — one row at the top that scopes every chart and both tables. Clicking a person's bar filters by them |
 | **Sort** | click any *Item*, *Estimated*, *Paid*, *Still to pay*, *Date*, or *Amount* header |
-| **Excel copy** | *↓ Excel* downloads the workbook as it currently stands |
-| **Status** | the pill in the header — click to retry a failed save or reload |
+| **Export / import** | *↓ Export* downloads the workbook as it stands; *↑ Import* loads one back in, replacing what is on screen |
+| **Status** | the pill in the header — it names where things are being saved. Click it to retry a failed save, reconnect the file, or reload |
 
 Filtering by a person narrows the *payments*, never the budgets, so the page then reads as
 "what has Ramesh covered" — the headline relabels itself to say so.
 
-Edits show immediately and commit in the background. If two devices edit at once, the save
-re-reads the file, replays your change onto the latest version, and commits — so a
-concurrent edit merges rather than clobbers. Close the tab with a save still in flight and
-the browser warns you.
+Edits show immediately and save in the background. Close the tab with a save still in
+flight and the browser warns you.
 
-With a token the app reads through the API, so your own view is always current. Without one
-it reads the published copy, which lags a change by however long the deploy takes (~1 min).
+In the GitHub mode, if two devices edit at once the save re-reads the file, replays your
+change onto the latest version, and commits — so a concurrent edit merges rather than
+clobbers. The local modes have no such race: one file, one writer.
 
 ## The charts
 
@@ -100,8 +111,9 @@ tooltips, and light and dark steps chosen for their own surface rather than flip
 
 ## The workbook
 
-`data/expenses.xlsx` has three sheets. The first two are the data; the third is generated
-for you and never read back.
+Whichever mode you use, the bytes are the same `.xlsx`, with three sheets. The first two
+are the data; the third is generated for you and never read back. That is what makes
+Export → Import work between modes and devices.
 
 **Budget**
 
@@ -135,15 +147,21 @@ the first time you save.
 
 ## Privacy
 
-**This repository is public, so `data/expenses.xlsx` is readable by anyone** — directly from
-the repo and from the published site. For a wedding budget that means family members' names
-and what each of them paid. Consider that before entering real figures.
+This only applies to the **GitHub** mode. A file on your device or in your browser is never
+uploaded anywhere — the page is static and talks to no server.
+
+**In the GitHub mode on this public repository, `data/expenses.xlsx` is readable by
+anyone** — directly from the repo and from the published site. For a wedding budget that
+means family members' names and what each of them paid. Consider that before entering real
+figures.
 
 Two ways to change it:
 
+- **Don't use the GitHub mode** — the default, a file on your device, keeps the data off
+  the internet entirely. This is the simplest answer.
 - **Split repos** — public repo for the app, private repo for the workbook; point
   `owner`/`repo` in `assets/config.js` at the private one. Free, and the data never touches
-  the public site. This is the recommended option.
+  the public site.
 - **GitHub Pro** (~$4/month) — keep the repo private and Pages still publishes. Note the
   Pages *site* stays reachable by URL regardless; to keep the data off it, drop `data/` from
   the artifact in `deploy.yml` and let the app read through the API with your token.
@@ -166,7 +184,7 @@ window.EXPENSE_CONFIG = {
   owner: null,          // null → detected from the Pages URL
   repo: null,           // null → detected from the Pages URL
   branch: 'main',
-  filePath: 'data/expenses.xlsx',
+  filePath: 'data/expenses.xlsx',   // GitHub mode only; local modes use the file you pick
   budgetSheet: 'Budget',
   paymentSheet: 'Payments',
   locale: 'en-IN',
@@ -195,9 +213,13 @@ data/expenses.xlsx               your data
 
 ## Notes and limits
 
-- One commit per change, so `main`'s history is a full audit trail — and it grows a commit
-  per payment.
-- The GitHub API allows 5,000 authenticated requests/hour; each save uses two.
+- In the GitHub mode, one commit per change — so `main`'s history is a full audit trail,
+  and it grows a commit per payment. The API allows 5,000 authenticated requests/hour and
+  each save uses two.
+- The file mode rewrites the whole workbook on every change, which is instant at this size
+  and means the file on disk is never half-written.
+- Only the GitHub mode syncs devices by itself. With a local store, two devices are two
+  budgets until you Export/Import between them.
 - Amounts are stored to 2 decimals in a single currency — no FX conversion.
 - A person is identified by the name you type. Two spellings are two people; the *Paid by*
   field suggests names already used, which is what keeps them consistent.

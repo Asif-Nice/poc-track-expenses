@@ -1,16 +1,21 @@
 /* ══════════════════════════════════════════════════════════════════════════
-   Wedding Budget — a static page that reads and writes an .xlsx file
-   committed in this repository, through the GitHub Contents API.
+   Wedding Budget — a static page that reads and writes an .xlsx workbook.
 
    The workbook holds two sheets:
      Budget    what a part of the wedding is expected to cost
      Payments  money actually handed over, by whom, against which item
    plus a generated Summary sheet with live formulas, for reading in Excel.
 
-   Read  : GitHub API when a token is present (always fresh), otherwise the
-           copy published alongside this page (read-only).
-   Write : serialize the workbook in the browser → PUT /contents → one commit
-           per change. The commit triggers the Pages deploy workflow.
+   Where that workbook lives is a choice, made in Settings. Everything above
+   the store speaks in { items, payments } and never knows the difference:
+
+     file     a real .xlsx on this device, opened through the File System
+              Access API. No account, no token, no network. The default
+              wherever the browser supports it.
+     browser  kept inside this browser. No setup at all, and the only option
+              on phones, where no browser can write to a chosen file.
+     github   committed to a repository through the Contents API. Needs a
+              token, and is the only mode that syncs devices by itself.
    ══════════════════════════════════════════════════════════════════════════ */
 'use strict';
 
@@ -19,6 +24,7 @@ const LS = {
   theme: 'wedding-budget.theme',
   currency: 'wedding-budget.currency',
   locale: 'wedding-budget.locale',
+  mode: 'wedding-budget.store-mode',
 };
 
 const BUDGET_COLUMNS = ['ID', 'Item', 'Category', 'Estimated', 'Notes'];
@@ -73,9 +79,12 @@ const cfg = (() => {
 const state = {
   items: [],       // {id, name, category, estimate, notes}
   payments: [],    // {id, itemId, date, amount, payer, method, notes}
-  base: null,      // {items, payments} as last committed, paired with sha
+  base: null,      // {items, payments} as last written — the github store's merge base
   sha: null,
   token: localStorage.getItem(LS.token) || '',
+  mode: '',        // set during boot, once we know what this browser supports
+  fileName: '',    // the chosen workbook's name, for the file store
+  blocked: '',     // why we cannot write yet: 'permission' | 'nofile' | 'notoken'
   filters: { category: '', payer: '', search: '' },
   itemSort: { key: 'outstanding', dir: 'desc' },
   paySort: { key: 'date', dir: 'desc' },
@@ -487,7 +496,156 @@ function base64ToU8(b64) {
   return u8;
 }
 
-/* ── GitHub API ──────────────────────────────────────────────────────────── */
+/* ── A little IndexedDB ──────────────────────────────────────────────────────
+   localStorage holds strings only, and a file handle is neither a string nor
+   something we may re-create ourselves — it is a capability the user granted,
+   and only IndexedDB can keep it. The workbook bytes ride along in the same
+   store so the browser mode needs no second mechanism. */
+
+const IDB_NAME = 'wedding-budget';
+const IDB_STORE = 'kv';
+
+function idb() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(IDB_NAME, 1);
+    req.onupgradeneeded = () => req.result.createObjectStore(IDB_STORE);
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+async function idbGet(key) {
+  const db = await idb();
+  return new Promise((resolve, reject) => {
+    const req = db.transaction(IDB_STORE, 'readonly').objectStore(IDB_STORE).get(key);
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+async function idbSet(key, value) {
+  const db = await idb();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(IDB_STORE, 'readwrite');
+    tx.objectStore(IDB_STORE).put(value, key);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+async function idbDel(key) {
+  const db = await idb();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(IDB_STORE, 'readwrite');
+    tx.objectStore(IDB_STORE).delete(key);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+/* ── Store: a real .xlsx on this device ──────────────────────────────────────
+   No account and no network. The browser hands back a handle to the file the
+   user picked; we keep it so the same file reopens next time. The permission
+   attached to it does not survive a browser restart, and re-requesting it must
+   happen inside a click — hence the reconnect prompt rather than a silent
+   retry on load. */
+
+const HANDLE_KEY = 'file-handle';
+
+const fileStore = {
+  id: 'file',
+  label: 'Excel file on this device',
+  available: () => typeof window.showOpenFilePicker === 'function',
+
+  handle: null,
+
+  async restore() {
+    this.handle = (await idbGet(HANDLE_KEY)) || null;
+    if (!this.handle) return 'nofile';
+    const perm = await this.handle.queryPermission({ mode: 'readwrite' });
+    return perm === 'granted' ? '' : 'permission';
+  },
+
+  // Must be called from a user gesture.
+  async grant() {
+    if (!this.handle) return false;
+    const perm = await this.handle.requestPermission({ mode: 'readwrite' });
+    return perm === 'granted';
+  },
+
+  async pickExisting() {
+    const [handle] = await window.showOpenFilePicker({
+      types: [{ description: 'Excel workbook', accept: { 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'] } }],
+      multiple: false,
+    });
+    await this.adopt(handle);
+  },
+
+  async pickNew(suggestedName = 'wedding-budget.xlsx') {
+    const handle = await window.showSaveFilePicker({
+      suggestedName,
+      types: [{ description: 'Excel workbook', accept: { 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'] } }],
+    });
+    await this.adopt(handle);
+  },
+
+  async adopt(handle) {
+    this.handle = handle;
+    await idbSet(HANDLE_KEY, handle);
+    state.fileName = handle.name;
+  },
+
+  async forget() {
+    this.handle = null;
+    await idbDel(HANDLE_KEY);
+    state.fileName = '';
+  },
+
+  async read() {
+    if (!this.handle) throw new Error('No workbook chosen yet.');
+    state.fileName = this.handle.name;
+    const file = await this.handle.getFile();
+    // A freshly created file is zero bytes — that is an empty budget, not a fault.
+    if (!file.size) return { data: { items: [], payments: [] } };
+    return { data: parseWorkbook(new Uint8Array(await file.arrayBuffer())) };
+  },
+
+  async write(data) {
+    if (!this.handle) throw new Error('No workbook chosen yet.');
+    const writable = await this.handle.createWritable();
+    await writable.write(buildWorkbook(data));
+    await writable.close();
+  },
+};
+
+/* ── Store: inside this browser ──────────────────────────────────────────────
+   The fallback where no file can be written — every phone, and Firefox. The
+   bytes are a real .xlsx, so Export hands back a file Excel opens. */
+
+const BYTES_KEY = 'workbook-bytes';
+
+const browserStore = {
+  id: 'browser',
+  label: 'This browser',
+  available: () => true,
+
+  async restore() { return ''; },
+
+  async read() {
+    const bytes = await idbGet(BYTES_KEY);
+    if (!bytes) return { data: { items: [], payments: [] } };
+    return { data: parseWorkbook(new Uint8Array(bytes)) };
+  },
+
+  async write(data) {
+    await idbSet(BYTES_KEY, buildWorkbook(data).buffer);
+  },
+};
+
+/* ── Store: a GitHub repository ─────────────────────────────────────────────
+   Kept because it is the only mode that syncs devices without being asked to.
+   It is the one mode that needs a token: GitHub refuses anonymous writes to any
+   repository, including your own. */
 
 const contentsUrl = () =>
   `https://api.github.com/repos/${cfg.owner}/${cfg.repo}/contents/${cfg.filePath.split('/').map(encodeURIComponent).join('/')}`;
@@ -548,6 +706,70 @@ async function putFile(data, sha, message) {
   return json.content && json.content.sha;
 }
 
+const githubStore = {
+  id: 'github',
+  label: 'GitHub repository',
+  available: () => !!(cfg.owner && cfg.repo),
+
+  async restore() {
+    if (!state.token) return 'notoken';
+    return '';
+  },
+
+  async read() {
+    if (state.token) return fetchViaApi();
+    // No token: fall back to the copy published beside this page, read-only.
+    return fetchPublished();
+  },
+
+  /* Writes carry their own conflict handling: GitHub rejects a PUT whose sha is
+     not current, which is how another device announces it got there first. */
+  async write(data, ops) {
+    const message = commitMessage(ops);
+    try {
+      const sha = state.base && state.sha ? state.sha : (await fetchViaApi()).sha;
+      state.sha = await putFile(data, sha, message);
+    } catch (err) {
+      if (!isConflict(err)) throw err;
+      const fresh = await fetchViaApi();
+      const merged = applyOps(fresh.data, ops);
+      state.sha = await putFile(merged, fresh.sha, message);
+      state.items = merged.items;
+      state.payments = merged.payments;
+      toast('info', 'Merged a change made elsewhere.');
+      return merged;
+    }
+    return null;
+  },
+};
+
+/* ── Choosing a store ────────────────────────────────────────────────────── */
+
+const STORES = { file: fileStore, browser: browserStore, github: githubStore };
+
+const activeStore = () => STORES[state.mode] || browserStore;
+
+/* Whatever the browser can actually do, preferring a real file on disk. An old
+   token from the previous version of this app keeps that setup working. */
+function defaultMode() {
+  if (fileStore.available()) return 'file';
+  if (state.token && githubStore.available()) return 'github';
+  return 'browser';
+}
+
+function resolveMode() {
+  const saved = localStorage.getItem(LS.mode);
+  if (saved && STORES[saved] && STORES[saved].available()) return saved;
+  return defaultMode();
+}
+
+function setMode(mode) {
+  state.mode = mode;
+  localStorage.setItem(LS.mode, mode);
+}
+
+const canWrite = () => !state.blocked;
+
 /* ── Commit queue ────────────────────────────────────────────────────────── */
 
 const queue = [];
@@ -591,8 +813,8 @@ function commitMessage(ops) {
 
 function enqueue(op) {
   queue.push(op);
-  if (!state.token) {
-    setSync('readonly');
+  if (!canWrite()) {
+    setSync('blocked');
     return;
   }
   flush();
@@ -605,7 +827,7 @@ function isConflict(err) {
 }
 
 async function flush() {
-  if (flushing || !queue.length || !state.token) return;
+  if (flushing || !queue.length || !canWrite()) return;
   clearTimeout(retryTimer);
   flushing = true;
   setSync('saving');
@@ -614,29 +836,11 @@ async function flush() {
     while (queue.length) {
       const batch = queue.splice(0, queue.length);
       try {
-        // Prefer the sha our own last PUT returned. Re-reading here would cost a
-        // request and can hit a lagging read replica, which returns stale content
-        // with a stale sha — a read we would only have to discard.
-        let base = state.base && state.sha
-          ? { data: state.base, sha: state.sha }
-          : await fetchViaApi();
-
-        let next = applyOps(base.data, batch);
-        try {
-          state.sha = await putFile(next, base.sha, commitMessage(batch));
-        } catch (err) {
-          if (!isConflict(err)) throw err;
-          // Someone else wrote in the meantime: take their version and replay
-          // this batch on top, so both sets of changes survive.
-          const fresh = await fetchViaApi();
-          next = applyOps(fresh.data, batch);
-          state.sha = await putFile(next, fresh.sha, commitMessage(batch));
-          toast('info', 'Merged a change made elsewhere.');
-        }
-
-        state.base = next;
-        state.items = next.items;
-        state.payments = next.payments;
+        // The screen already shows the result of these ops; writing what is on
+        // screen is what keeps the workbook and the view the same thing.
+        const next = { items: state.items, payments: state.payments };
+        const merged = await activeStore().write(next, batch);
+        state.base = merged || next;
         renderAll();
       } catch (err) {
         queue.unshift(...batch);                          // keep the work
@@ -703,7 +907,7 @@ function createStarterItems() {
   state.items = state.items.concat(rows);
   renderAll();
   queue.push(...rows.map((row) => ({ kind: 'item', row, isNew: true })));
-  if (!state.token) setSync('readonly');
+  if (!canWrite()) setSync('blocked');
   else flush();
   toast('info', `Added ${plural(rows.length, 'item', 'items')} — set an estimated cost on each.`);
 }
@@ -1676,24 +1880,44 @@ function setSync(kind, note = '') {
   renderSync();
 }
 
+/* What "saved" means depends on where the workbook lives, so the pill says
+   where — a wedding budget you believe is saved but is not would be the worst
+   failure this app could have. */
+const SAVED_LABEL = {
+  file: () => (state.fileName ? `Saved to ${state.fileName}` : 'Saved to file'),
+  browser: () => 'Saved in this browser',
+  github: () => 'Saved to repo',
+};
+
+const BLOCKED_LABEL = {
+  permission: 'Reconnect file',
+  nofile: 'Choose a file',
+  notoken: 'Read-only',
+};
+
 function renderSync() {
   const pill = $('#sync-pill');
   const text = $('#sync-text');
   const pending = queue.length;
   pill.dataset.state = state.sync;
 
+  const savedFor = SAVED_LABEL[state.mode] || SAVED_LABEL.browser;
   const label = {
     loading: 'Loading…',
-    ok: 'Saved to repo',
+    ok: savedFor(),
     saving: pending > 1 ? `Saving ${pending} changes…` : 'Saving…',
     error: 'Save failed — retry',
-    readonly: 'Read-only',
+    blocked: BLOCKED_LABEL[state.blocked] || 'Not saving',
   }[state.sync] || state.sync;
 
-  text.textContent = pending && state.sync === 'readonly' ? `Read-only · ${pending} unsaved` : label;
-  pill.title = state.syncNote || (state.sync === 'readonly'
-    ? 'Connect a GitHub token to save changes'
-    : `${cfg.owner || '?'}/${cfg.repo || '?'} · ${cfg.branch}`);
+  text.textContent = pending && state.sync === 'blocked' ? `${label} · ${pending} unsaved` : label;
+
+  const where = {
+    file: () => (state.fileName ? `Workbook: ${state.fileName}` : 'No workbook chosen yet'),
+    browser: () => 'Stored in this browser only — export a copy to keep it safe',
+    github: () => `${cfg.owner || '?'}/${cfg.repo || '?'} · ${cfg.branch}`,
+  }[state.mode];
+  pill.title = state.syncNote || (where ? where() : '');
 }
 
 /* ── Toasts & tooltip ────────────────────────────────────────────────────── */
@@ -1806,7 +2030,7 @@ function submitItem(e) {
   };
 
   saveItem(row, !state.editingItem);
-  if (!state.token) toast('info', 'Saved locally only — connect a token to commit it.');
+  if (!canWrite()) toast('info', 'Showing on screen only — nowhere to save it yet.');
   state.editingItem = null;
   $('#dlg-item').close();
 
@@ -1888,7 +2112,7 @@ function submitPayment(e) {
   };
 
   savePayment(row, !state.editingPay);
-  if (!state.token) toast('info', 'Saved locally only — connect a token to commit it.');
+  if (!canWrite()) toast('info', 'Showing on screen only — nowhere to save it yet.');
   state.editingPay = null;
   $('#dlg-pay').close();
 
@@ -1904,8 +2128,8 @@ function confirmDeleteItem(r) {
   $('#del-title').textContent = 'Delete this budget item?';
   $('#del-summary').textContent = `${r.name} — ${fmtMoney(r.estimate)} estimated`;
   $('#del-note').textContent = pays.length
-    ? `Its ${plural(pays.length, 'payment', 'payments')} (${fmtMoney(pays.reduce((t, p) => t + p.amount, 0))}) will be removed too. This commits the change.`
-    : 'This removes the row from the Excel file and commits the change.';
+    ? `Its ${plural(pays.length, 'payment', 'payments')} (${fmtMoney(pays.reduce((t, p) => t + p.amount, 0))}) will be removed too. This is saved straight away.`
+    : 'This removes the row from the workbook and saves straight away.';
   $('#dlg-delete').showModal();
 }
 
@@ -1914,11 +2138,14 @@ function confirmDeletePayment(p) {
   state.pendingDelete = { kind: 'payment', id: p.id };
   $('#del-title').textContent = 'Delete this payment?';
   $('#del-summary').textContent = `${fmtMoney(p.amount)} by ${p.payer} towards ${it ? it.name : 'an item'} on ${fmtDate(p.date)}`;
-  $('#del-note').textContent = 'This removes the row from the Excel file and commits the change.';
+  $('#del-note').textContent = 'This removes the row from the workbook and saves straight away.';
   $('#dlg-delete').showModal();
 }
 
 function openSettings() {
+  $('#set-mode').value = state.mode;
+  $('#opt-file').disabled = !fileStore.available();
+  $('#opt-github').disabled = !githubStore.available();
   $('#set-repo').textContent = cfg.owner && cfg.repo ? `${cfg.owner}/${cfg.repo}` : 'not detected';
   $('#set-branch').textContent = cfg.branch;
   $('#set-path').textContent = cfg.filePath;
@@ -1926,13 +2153,74 @@ function openSettings() {
   $('#set-currency').value = cfg.currency;
   $('#set-locale').value = cfg.locale;
   $('#set-error').hidden = true;
+  renderModePanels();
   $('#dlg-settings').showModal();
+}
+
+/* Only the chosen mode's controls are on screen — the others are noise, and a
+   token field visible in file mode is exactly the confusion to avoid. */
+function renderModePanels() {
+  const mode = $('#set-mode').value;
+  $('#panel-file').hidden = mode !== 'file';
+  $('#panel-browser').hidden = mode !== 'browser';
+  $('#panel-github').hidden = mode !== 'github';
+
+  $('#set-file-name').textContent = state.fileName || 'No file chosen yet';
+  $('#set-file-forget').hidden = !state.fileName;
+
+  const unsupported = $('#set-file-unsupported');
+  unsupported.hidden = fileStore.available();
+}
+
+async function chooseFile(kind) {
+  const err = $('#set-error');
+  try {
+    if (kind === 'new') await fileStore.pickNew();
+    else await fileStore.pickExisting();
+
+    setMode('file');
+    state.blocked = '';
+    err.hidden = true;
+    renderModePanels();
+
+    // A brand-new file is empty; an existing one replaces what is on screen.
+    const carry = kind === 'new' ? { items: state.items, payments: state.payments } : null;
+    if (carry && (carry.items.length || carry.payments.length)) {
+      await fileStore.write(carry);
+      state.base = carry;
+      setSync('ok');
+      toast('ok', `Saving to ${state.fileName} from now on.`);
+    } else {
+      await load();
+      toast('ok', `Connected to ${state.fileName}.`);
+    }
+    showBanner(false);
+    if (queue.length) flush();
+    renderAll();
+  } catch (ex) {
+    if (ex && ex.name === 'AbortError') return;      // the picker was dismissed
+    err.textContent = ex.message;
+    err.hidden = false;
+  }
+}
+
+async function reconnectFile() {
+  const ok = await fileStore.grant();
+  if (!ok) {
+    toast('error', 'Permission declined — changes cannot be saved to the file.');
+    return;
+  }
+  state.blocked = '';
+  showBanner(false);
+  await load();
+  if (queue.length) flush();
 }
 
 async function submitSettings(e) {
   e.preventDefault();
   const err = $('#set-error');
   const btn = $('#set-submit');
+  const mode = $('#set-mode').value;
   const token = $('#set-token').value.trim();
   const currency = ($('#set-currency').value.trim() || 'INR').toUpperCase();
   const locale = $('#set-locale').value.trim() || 'en-IN';
@@ -1943,74 +2231,131 @@ async function submitSettings(e) {
   localStorage.setItem(LS.locale, locale);
   rebuildFormatters();
 
-  if (!token) {
-    state.token = '';
-    localStorage.removeItem(LS.token);
-    setSync('readonly');
-    renderAll();
-    $('#dlg-settings').close();
-    return;
-  }
-
-  if (!cfg.owner || !cfg.repo) {
-    err.textContent = 'Repository not detected. Set owner and repo in assets/config.js.';
-    err.hidden = false;
-    return;
-  }
-
-  btn.disabled = true;
-  btn.textContent = 'Verifying…';
-  const previous = state.token;
-  state.token = token;
-  try {
-    const res = await gh(`https://api.github.com/repos/${cfg.owner}/${cfg.repo}`);
-    if (res.status === 404) {
-      throw new Error(`Cannot see ${cfg.owner}/${cfg.repo}. Check the token is scoped to that repository.`);
+  if (mode === 'github') {
+    if (!cfg.owner || !cfg.repo) {
+      return fail('Repository not detected. Set owner and repo in assets/config.js.');
     }
-    const repo = await res.json();
-    localStorage.setItem(LS.token, token);
-    err.hidden = true;
-    $('#dlg-settings').close();
+    if (!token) return fail('A token is required for the GitHub mode — GitHub refuses anonymous writes.');
 
-    // Reported permissions vary by token type, so this is advisory — the real
-    // test is the first save, which reports its own error if write is missing.
-    const writable = repo.permissions && repo.permissions.push;
-    toast(writable ? 'ok' : 'info',
-      writable
-        ? 'Token verified — changes will be committed.'
-        : 'Token accepted, but write access could not be confirmed. If saving fails, grant Contents: Read and write.');
-    showBanner(false);
-    await load();
-    if (queue.length) flush();
-  } catch (ex) {
-    state.token = previous;
-    err.textContent = ex.message;
-    err.hidden = false;
-  } finally {
+    btn.disabled = true;
+    btn.textContent = 'Verifying…';
+    const previous = state.token;
+    state.token = token;
+    try {
+      const res = await gh(`https://api.github.com/repos/${cfg.owner}/${cfg.repo}`);
+      if (res.status === 404) {
+        throw new Error(`Cannot see ${cfg.owner}/${cfg.repo}. Check the token is scoped to that repository.`);
+      }
+      const repo = await res.json();
+      localStorage.setItem(LS.token, token);
+      // Reported permissions vary by token type, so this is advisory — the real
+      // test is the first save, which reports its own error if write is missing.
+      const writable = repo.permissions && repo.permissions.push;
+      toast(writable ? 'ok' : 'info',
+        writable
+          ? 'Token verified — changes will be committed.'
+          : 'Token accepted, but write access could not be confirmed. If saving fails, grant Contents: Read and write.');
+    } catch (ex) {
+      state.token = previous;
+      btn.disabled = false;
+      btn.textContent = 'Save';
+      return fail(ex.message);
+    }
     btn.disabled = false;
-    btn.textContent = 'Save & verify';
+    btn.textContent = 'Save';
   }
+
+  if (mode === 'file' && !fileStore.handle) {
+    return fail('Choose a workbook file first, or pick a different place to keep the data.');
+  }
+
+  const switched = mode !== state.mode;
+  setMode(mode);
+  err.hidden = true;
+  $('#dlg-settings').close();
+
+  if (switched) {
+    // Carry what is on screen into the new home rather than silently losing it.
+    const carry = { items: state.items, payments: state.payments };
+    state.blocked = await activeStore().restore();
+    if (canWrite() && (carry.items.length || carry.payments.length)) {
+      try {
+        await activeStore().write(carry, [{ kind: 'switch' }]);
+        state.base = carry;
+        setSync('ok');
+        toast('ok', `Now keeping the budget in: ${activeStore().label.toLowerCase()}.`);
+      } catch (ex) {
+        setSync('error', ex.message);
+        toast('error', `Could not write to the new location: ${ex.message}`);
+      }
+    } else {
+      await load();
+    }
+  }
+  renderAll();
+  if (queue.length) flush();
+
+  function fail(msg) {
+    err.textContent = msg;
+    err.hidden = false;
+  }
+}
+
+async function forgetFile() {
+  await fileStore.forget();
+  state.blocked = 'nofile';
+  setSync('blocked');
+  renderModePanels();
+  toast('info', 'Forgot that file. Choose another to start saving again.');
 }
 
 function forgetToken() {
   state.token = '';
   localStorage.removeItem(LS.token);
   $('#set-token').value = '';
-  setSync('readonly');
+  if (state.mode === 'github') {
+    state.blocked = 'notoken';
+    setSync('blocked');
+  }
   toast('info', 'Token removed from this browser.');
-  showBanner(true);
-  $('#dlg-settings').close();
 }
 
 /* ── Banner ──────────────────────────────────────────────────────────────── */
 
-function showBanner(show, message, actionLabel) {
+const BANNER = {
+  permission: {
+    text: () => `Reconnect ${state.fileName || 'your workbook'} to save changes — browsers ask again each time they restart.`,
+    action: 'Reconnect',
+    run: reconnectFile,
+  },
+  nofile: {
+    text: () => 'Choose where to keep your budget — a file on this device, or this browser.',
+    action: 'Choose',
+    run: openSettings,
+  },
+  notoken: {
+    text: () => 'Read-only. This browser is set to save to GitHub, which needs a token.',
+    action: 'Settings',
+    run: openSettings,
+  },
+};
+
+let bannerAction = null;
+
+function showBanner(show, message, actionLabel, run) {
   const b = $('#banner');
-  if (!show) { b.hidden = true; return; }
-  $('#banner-text').textContent = message || 'Read-only. Connect a GitHub token to add items, record payments, or edit.';
-  $('#banner-action').textContent = actionLabel || 'Connect';
+  if (!show) { b.hidden = true; bannerAction = null; return; }
+  $('#banner-text').textContent = message || '';
+  $('#banner-action').textContent = actionLabel || 'Settings';
   $('#banner-action').hidden = false;
+  bannerAction = run || openSettings;
   b.hidden = false;
+}
+
+function renderBlockedBanner() {
+  const spec = BANNER[state.blocked];
+  if (!spec) { showBanner(false); return; }
+  showBanner(true, spec.text(), spec.action, spec.run);
 }
 
 /* ── Theme ───────────────────────────────────────────────────────────────── */
@@ -2028,7 +2373,10 @@ function initTheme() {
   });
 }
 
-/* ── Download ────────────────────────────────────────────────────────────── */
+/* ── Export & import ─────────────────────────────────────────────────────────
+   The bridge between devices when the store is local: export here, import
+   there. It is also the browser mode's backup, which matters because clearing
+   site data would otherwise take the budget with it. */
 
 function downloadXlsx() {
   const blob = new Blob([buildWorkbook({ items: state.items, payments: state.payments })], {
@@ -2036,9 +2384,35 @@ function downloadXlsx() {
   });
   const a = el('a');
   a.href = URL.createObjectURL(blob);
-  a.download = cfg.filePath.split('/').pop() || 'wedding-budget.xlsx';
+  a.download = state.fileName || cfg.filePath.split('/').pop() || 'wedding-budget.xlsx';
   a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+}
+
+async function importXlsx(file) {
+  if (!file) return;
+  try {
+    const data = parseWorkbook(new Uint8Array(await file.arrayBuffer()));
+    const had = state.items.length || state.payments.length;
+    if (had && !confirm(
+      `Replace the ${plural(state.items.length, 'item', 'items')} and `
+      + `${plural(state.payments.length, 'payment', 'payments')} on screen with `
+      + `${plural(data.items.length, 'item', 'items')} and `
+      + `${plural(data.payments.length, 'payment', 'payments')} from ${file.name}?`)) return;
+
+    state.items = data.items;
+    state.payments = data.payments;
+    renderAll();
+
+    if (canWrite()) {
+      await activeStore().write(data, [{ kind: 'import' }]);
+      state.base = data;
+      setSync('ok');
+    }
+    toast('ok', `Imported ${plural(data.items.length, 'item', 'items')} from ${file.name}.`);
+  } catch (err) {
+    toast('error', `Could not read that file: ${err.message}`);
+  }
 }
 
 /* ── Load ────────────────────────────────────────────────────────────────── */
@@ -2046,35 +2420,49 @@ function downloadXlsx() {
 async function load() {
   setSync('loading');
   try {
-    let result;
-    if (state.token) {
-      result = await fetchViaApi();
-    } else {
-      // Without a token, read the copy published alongside the page. If it is
-      // missing (never deployed, or excluded from the artifact), fall back to an
-      // empty read-only view rather than an error.
-      try {
-        result = await fetchPublished();
-      } catch {
-        renderAll();
-        setSync('readonly');
-        showBanner(true, 'Connect a GitHub token to load and edit your wedding budget.', 'Connect');
-        return;
-      }
-    }
+    const result = await activeStore().read();
     state.items = result.data.items;
     state.payments = result.data.payments;
-    state.base = result.sha ? result.data : null;
-    state.sha = result.sha;
+    state.base = result.data;
+    state.sha = result.sha || null;
 
     renderAll();
-    setSync(state.token ? 'ok' : 'readonly');
+    setSync(canWrite() ? 'ok' : 'blocked');
+    renderBlockedBanner();
     if (result.missing) toast('info', `${cfg.filePath} does not exist yet — it will be created on your first save.`);
   } catch (err) {
     renderAll();
     setSync('error', err.message);
     toast('error', err.message);
   }
+}
+
+/* ── Boot ────────────────────────────────────────────────────────────────── */
+
+async function boot() {
+  setMode(resolveMode());
+  try {
+    state.blocked = await activeStore().restore();
+  } catch {
+    state.blocked = 'nofile';
+  }
+
+  // A first visit in file mode has nothing to open yet. Rather than an empty
+  // error, read whatever ships beside the page so the user sees the app work,
+  // then let them choose where their own copy should live.
+  if (state.mode === 'file' && state.blocked === 'nofile') {
+    try {
+      const seeded = await fetchPublished();
+      state.items = seeded.data.items;
+      state.payments = seeded.data.payments;
+    } catch { /* nothing published — the empty state is the right first screen */ }
+    renderAll();
+    setSync('blocked');
+    renderBlockedBanner();
+    return;
+  }
+
+  await load();
 }
 
 /* ── Wire up ─────────────────────────────────────────────────────────────── */
@@ -2090,9 +2478,15 @@ function init() {
   $('#btn-add-pay').addEventListener('click', () => openPayment(null));
   $('#btn-settings').addEventListener('click', openSettings);
   $('#btn-download').addEventListener('click', downloadXlsx);
+  $('#btn-import').addEventListener('click', () => $('#import-input').click());
+  $('#import-input').addEventListener('change', (e) => {
+    importXlsx(e.target.files[0]);
+    e.target.value = '';                                 // so the same file can be picked twice
+  });
   $('#sync-pill').addEventListener('click', () => {
     if (state.sync === 'error') flush();
-    else if (state.sync === 'readonly') openSettings();
+    else if (state.blocked === 'permission') reconnectFile();
+    else if (state.sync === 'blocked') openSettings();
     else load();
   });
 
@@ -2100,6 +2494,10 @@ function init() {
   $('#form-pay').addEventListener('submit', submitPayment);
   $('#form-settings').addEventListener('submit', submitSettings);
   $('#pay-item').addEventListener('change', updatePayContext);
+  $('#set-mode').addEventListener('change', renderModePanels);
+  $('#set-file-open').addEventListener('click', () => chooseFile('existing'));
+  $('#set-file-new').addEventListener('click', () => chooseFile('new'));
+  $('#set-file-forget').addEventListener('click', forgetFile);
   $('#set-forget').addEventListener('click', forgetToken);
 
   $('#del-confirm').addEventListener('click', () => {
@@ -2112,7 +2510,7 @@ function init() {
   document.querySelectorAll('[data-close]').forEach((b) =>
     b.addEventListener('click', () => b.closest('dialog').close()));
 
-  $('#banner-action').addEventListener('click', openSettings);
+  $('#banner-action').addEventListener('click', () => (bannerAction || openSettings)());
   $('#banner-close').addEventListener('click', () => showBanner(false));
 
   $('#f-category').addEventListener('change', (e) => { state.filters.category = e.target.value; renderAll(); });
@@ -2156,13 +2554,7 @@ function init() {
     if (queue.length) { e.preventDefault(); e.returnValue = ''; }
   });
 
-  if (!cfg.owner || !cfg.repo) {
-    showBanner(true, 'Repository not detected — set owner and repo in assets/config.js to enable saving.', 'Settings');
-  } else if (!state.token) {
-    showBanner(true);
-  }
-
-  load();
+  boot();
 }
 
 function bindSort(th, sortKey, rerender) {

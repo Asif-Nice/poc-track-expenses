@@ -50,7 +50,9 @@
       <input id="f-search" type="search" placeholder="Item, person, note…" autocomplete="off">
     </label>
     <button id="f-clear" class="btn btn-ghost" type="button">Clear</button>
-    <button id="btn-download" class="btn btn-ghost" type="button" title="Download the .xlsx file">↓ Excel</button>
+    <button id="btn-download" class="btn btn-ghost" type="button" title="Download a copy of the workbook">↓ Export</button>
+    <button id="btn-import" class="btn btn-ghost" type="button" title="Load a workbook, replacing what is here">↑ Import</button>
+    <input id="import-input" type="file" accept=".xlsx" hidden>
   </section>
 
   <!-- ── Overall progress — the one hero figure ─────────────────────────── -->
@@ -302,22 +304,74 @@
   <form id="form-settings" method="dialog">
     <h2 class="dlg-title">Settings</h2>
 
-    <div class="repo-facts">
-      <div><span>Repository</span><code id="set-repo">—</code></div>
-      <div><span>Branch</span><code id="set-branch">—</code></div>
-      <div><span>File</span><code id="set-path">—</code></div>
+    <label class="field">
+      <span class="field-label">Keep the budget in</span>
+      <select id="set-mode">
+        <option value="file" id="opt-file">An Excel file on this device</option>
+        <option value="browser">This browser</option>
+        <option value="github" id="opt-github">A GitHub repository (needs a token)</option>
+      </select>
+    </label>
+
+    <!-- ── File ────────────────────────────────────────────────────────── -->
+    <div class="mode-panel" id="panel-file">
+      <p class="mode-hint">
+        A real <code>.xlsx</code> on your PC, saved every time you change something. No
+        account, no token, works offline. Put it in a OneDrive folder and it is backed up
+        and synced for you.
+      </p>
+      <div class="file-row">
+        <span class="file-name" id="set-file-name">No file chosen yet</span>
+        <button type="button" class="btn btn-sm" id="set-file-open">Open existing…</button>
+        <button type="button" class="btn btn-sm btn-primary" id="set-file-new">Create new…</button>
+      </div>
+      <p class="mode-note">
+        Browsers forget file permission when they restart, so the app asks you to reconnect
+        once per session — one click, no re-picking.
+      </p>
+      <p class="dlg-error" id="set-file-unsupported" hidden>
+        This browser cannot write to a chosen file. Chrome or Edge on a computer can;
+        phones and Firefox cannot. Use <strong>This browser</strong> instead.
+      </p>
+      <button type="button" class="btn btn-danger-ghost btn-sm" id="set-file-forget" hidden>Forget this file</button>
     </div>
 
-    <label class="field">
-      <span class="field-label">GitHub token</span>
-      <input name="token" id="set-token" type="password" autocomplete="off" spellcheck="false"
-             placeholder="github_pat_… or ghp_…">
-      <span class="field-hint">
-        Needed to save changes. Use a <strong>fine-grained</strong> token scoped to this
-        repository only, with <strong>Contents: Read and write</strong>. It is stored in this
-        browser (localStorage) and sent only to api.github.com — never committed.
-      </span>
-    </label>
+    <!-- ── Browser ─────────────────────────────────────────────────────── -->
+    <div class="mode-panel" id="panel-browser" hidden>
+      <p class="mode-hint">
+        Kept inside this browser. Nothing to set up, and the only option on a phone.
+      </p>
+      <p class="mode-note">
+        It lives on this device and this browser only — clearing site data would erase it,
+        and another device sees nothing. Use <strong>↓ Export</strong> now and then, and
+        <strong>↑ Import</strong> on the other device.
+      </p>
+    </div>
+
+    <!-- ── GitHub ──────────────────────────────────────────────────────── -->
+    <div class="mode-panel" id="panel-github" hidden>
+      <p class="mode-hint">
+        Committed to a repository. The only mode that syncs your devices by itself — and
+        the only one needing a token, because GitHub refuses anonymous writes even to your
+        own repository.
+      </p>
+      <div class="repo-facts">
+        <div><span>Repository</span><code id="set-repo">—</code></div>
+        <div><span>Branch</span><code id="set-branch">—</code></div>
+        <div><span>File</span><code id="set-path">—</code></div>
+      </div>
+      <label class="field">
+        <span class="field-label">GitHub token</span>
+        <input name="token" id="set-token" type="password" autocomplete="off" spellcheck="false"
+               placeholder="github_pat_… or ghp_…">
+        <span class="field-hint">
+          Use a <strong>fine-grained</strong> token scoped to this repository only, with
+          <strong>Contents: Read and write</strong>. It is stored in this browser
+          (localStorage) and sent only to api.github.com — never committed.
+        </span>
+      </label>
+      <button type="button" class="btn btn-danger-ghost btn-sm" id="set-forget">Forget token</button>
+    </div>
 
     <div class="form-grid">
       <label class="field">
@@ -333,10 +387,8 @@
     <p class="dlg-error" id="set-error" hidden></p>
 
     <div class="dlg-actions">
-      <button type="button" class="btn btn-danger-ghost" id="set-forget">Forget token</button>
-      <span class="spacer"></span>
       <button type="button" class="btn btn-ghost" data-close>Cancel</button>
-      <button type="submit" class="btn btn-primary" id="set-submit">Save &amp; verify</button>
+      <button type="submit" class="btn btn-primary" id="set-submit">Save</button>
     </div>
   </form>
 </dialog>
