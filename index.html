@@ -4,8 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="light dark">
-<title>Expense Tracker</title>
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>&#128181;</text></svg>">
+<title>Wedding Budget</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>&#128141;</text></svg>">
 <link rel="stylesheet" href="assets/styles.css">
 </head>
 <body>
@@ -13,7 +13,7 @@
 <header class="topbar">
   <div class="brand">
     <span class="brand-mark" aria-hidden="true"></span>
-    <span class="brand-name">Expense Tracker</span>
+    <span class="brand-name">Wedding Budget</span>
   </div>
 
   <div class="topbar-right">
@@ -22,7 +22,8 @@
     </button>
     <button id="btn-theme" class="icon-btn" type="button" title="Toggle light / dark" aria-label="Toggle light or dark theme">◐</button>
     <button id="btn-settings" class="icon-btn" type="button" title="Settings" aria-label="Settings">⚙</button>
-    <button id="btn-add" class="btn btn-primary" type="button">＋ Add expense</button>
+    <button id="btn-add-item" class="btn" type="button">＋ Budget item</button>
+    <button id="btn-add-pay" class="btn btn-primary" type="button">＋ Payment</button>
   </div>
 </header>
 
@@ -34,82 +35,182 @@
 
 <main class="viz-root">
 
-  <!-- ── KPI row ───────────────────────────────────────────────────────── -->
-  <section class="kpis" aria-label="Summary">
-    <article class="tile">
-      <h2 class="tile-label" id="kpi-period-label">This month</h2>
-      <p class="tile-value" id="kpi-month">—</p>
-      <p class="tile-foot" id="kpi-month-delta">&nbsp;</p>
-    </article>
-    <article class="tile">
-      <h2 class="tile-label">Today</h2>
-      <p class="tile-value" id="kpi-today">—</p>
-      <p class="tile-foot" id="kpi-today-count">&nbsp;</p>
-    </article>
-    <article class="tile">
-      <h2 class="tile-label">Daily average</h2>
-      <p class="tile-value" id="kpi-avg">—</p>
-      <p class="tile-foot" id="kpi-avg-foot">&nbsp;</p>
-    </article>
-    <article class="tile">
-      <h2 class="tile-label">Top category</h2>
-      <p class="tile-value tile-value-sm" id="kpi-top">—</p>
-      <p class="tile-foot" id="kpi-top-foot">&nbsp;</p>
-    </article>
-  </section>
-
-  <!-- ── Breakdown ─────────────────────────────────────────────────────── -->
-  <section class="panel" aria-label="Spend by category">
-    <div class="panel-head">
-      <h2 class="panel-title">Spend by category</h2>
-      <span class="panel-sub" id="breakdown-sub"></span>
-    </div>
-    <div id="breakdown" class="breakdown"></div>
-  </section>
-
-  <!-- ── Filters ───────────────────────────────────────────────────────── -->
+  <!-- ── Filters — one row, above everything it scopes ──────────────────── -->
   <section class="toolbar" aria-label="Filters">
-    <label class="field field-inline">
-      <span class="field-label">Month</span>
-      <select id="f-month"></select>
-    </label>
     <label class="field field-inline">
       <span class="field-label">Category</span>
       <select id="f-category"><option value="">All categories</option></select>
     </label>
+    <label class="field field-inline">
+      <span class="field-label">Paid by</span>
+      <select id="f-payer"><option value="">Everyone</option></select>
+    </label>
     <label class="field field-inline field-grow">
       <span class="field-label">Search</span>
-      <input id="f-search" type="search" placeholder="Description, notes, method…" autocomplete="off">
+      <input id="f-search" type="search" placeholder="Item, person, note…" autocomplete="off">
     </label>
     <button id="f-clear" class="btn btn-ghost" type="button">Clear</button>
     <button id="btn-download" class="btn btn-ghost" type="button" title="Download the .xlsx file">↓ Excel</button>
   </section>
 
-  <!-- ── Table ─────────────────────────────────────────────────────────── -->
-  <section class="panel panel-flush" aria-label="Expenses">
-    <div class="table-scroll">
+  <!-- ── Overall progress — the one hero figure ─────────────────────────── -->
+  <section class="panel hero-panel" aria-label="Overall progress">
+    <div class="hero-main">
+      <p class="hero-label" id="hero-label">Paid so far</p>
+      <p class="hero-value" id="hero-paid">—</p>
+      <p class="hero-sub" id="hero-sub">&nbsp;</p>
+
+      <div class="meter" id="hero-meter">
+        <div class="meter-track">
+          <div class="meter-fill" id="hero-fill"></div>
+        </div>
+        <div class="meter-scale">
+          <span>₹0</span>
+          <span id="hero-scale-end">—</span>
+        </div>
+      </div>
+
+      <ul class="legend" id="hero-legend">
+        <li><span class="key key-paid"></span>Paid</li>
+        <li><span class="key key-remaining"></span>Still to pay</li>
+        <li hidden id="hero-legend-over"><span class="key key-over"></span>Over budget</li>
+      </ul>
+    </div>
+
+    <dl class="hero-facts">
+      <div><dt>Total budget</dt><dd id="fact-budget">—</dd></div>
+      <div><dt>Still to pay</dt><dd id="fact-outstanding">—</dd></div>
+      <div><dt>Funded</dt><dd id="fact-pct">—</dd></div>
+      <div><dt>Payments made</dt><dd id="fact-count">—</dd></div>
+    </dl>
+  </section>
+
+  <!-- ── Insight tiles ─────────────────────────────────────────────────── -->
+  <section class="kpis" aria-label="Highlights">
+    <article class="tile">
+      <h2 class="tile-label">Biggest gap</h2>
+      <p class="tile-value tile-value-sm" id="kpi-gap">—</p>
+      <p class="tile-foot" id="kpi-gap-foot">&nbsp;</p>
+    </article>
+    <article class="tile">
+      <h2 class="tile-label">Top contributor</h2>
+      <p class="tile-value tile-value-sm" id="kpi-payer">—</p>
+      <p class="tile-foot" id="kpi-payer-foot">&nbsp;</p>
+    </article>
+    <article class="tile">
+      <h2 class="tile-label">Fully settled</h2>
+      <p class="tile-value" id="kpi-settled">—</p>
+      <p class="tile-foot" id="kpi-settled-foot">&nbsp;</p>
+    </article>
+    <article class="tile">
+      <h2 class="tile-label">Latest payment</h2>
+      <p class="tile-value tile-value-sm" id="kpi-last">—</p>
+      <p class="tile-foot" id="kpi-last-foot">&nbsp;</p>
+    </article>
+  </section>
+
+  <!-- ── Budget vs paid, per item ──────────────────────────────────────── -->
+  <section class="panel" aria-label="Budget versus paid, by item">
+    <div class="panel-head">
+      <h2 class="panel-title">Budget vs paid, by item</h2>
+      <span class="panel-sub" id="items-sub"></span>
+    </div>
+    <ul class="legend">
+      <li><span class="key key-paid"></span>Paid</li>
+      <li><span class="key key-remaining"></span>Still to pay</li>
+      <li><span class="key key-over"></span>Over budget</li>
+    </ul>
+    <div id="chart-items" class="chart"></div>
+  </section>
+
+  <div class="panel-row">
+    <!-- ── Contributions by person ─────────────────────────────────────── -->
+    <section class="panel" aria-label="Contributions by person">
+      <div class="panel-head">
+        <h2 class="panel-title">Who has contributed</h2>
+        <span class="panel-sub" id="payers-sub"></span>
+      </div>
+      <div id="chart-payers" class="chart"></div>
+    </section>
+
+    <!-- ── Funding over time ───────────────────────────────────────────── -->
+    <section class="panel" aria-label="Funding over time">
+      <div class="panel-head">
+        <h2 class="panel-title">Funding over time</h2>
+        <span class="panel-sub" id="time-sub"></span>
+      </div>
+      <div id="chart-time" class="chart"></div>
+    </section>
+  </div>
+
+  <!-- ── Who paid for what ─────────────────────────────────────────────── -->
+  <section class="panel" aria-label="Who paid for what">
+    <div class="panel-head">
+      <h2 class="panel-title">Who paid for what</h2>
+      <span class="panel-sub" id="split-sub"></span>
+    </div>
+    <div class="scale-legend" id="split-legend"></div>
+    <div id="chart-split" class="chart"></div>
+    <p class="chart-note" id="split-note" hidden></p>
+  </section>
+
+  <!-- ── Tables — the readable twin of every chart above ───────────────── -->
+  <section class="panel panel-flush" aria-label="Details">
+    <div class="tabs" role="tablist">
+      <button class="tab" role="tab" data-tab="items" aria-selected="true" type="button">Budget items</button>
+      <button class="tab" role="tab" data-tab="payments" aria-selected="false" type="button">Payments</button>
+    </div>
+
+    <div class="table-scroll" id="pane-items">
+      <table class="grid">
+        <thead>
+          <tr>
+            <th scope="col" class="col-toggle"><span class="sr-only">Expand</span></th>
+            <th class="sortable" data-sort="name" scope="col">Item</th>
+            <th scope="col">Category</th>
+            <th class="sortable num" data-sort="estimate" scope="col">Estimated</th>
+            <th class="sortable num" data-sort="paid" scope="col">Paid</th>
+            <th class="sortable num" data-sort="outstanding" scope="col">Still to pay</th>
+            <th scope="col" class="col-actions"><span class="sr-only">Actions</span></th>
+          </tr>
+        </thead>
+        <tbody id="rows-items"></tbody>
+        <tfoot>
+          <tr>
+            <td colspan="3" class="foot-label"><span id="count-items">0</span> items</td>
+            <td class="num" id="foot-estimate">—</td>
+            <td class="num" id="foot-paid">—</td>
+            <td class="num" id="foot-outstanding">—</td>
+            <td></td>
+          </tr>
+        </tfoot>
+      </table>
+      <div id="empty-items" class="empty" hidden></div>
+    </div>
+
+    <div class="table-scroll" id="pane-payments" hidden>
       <table class="grid">
         <thead>
           <tr>
             <th class="sortable" data-sort="date" scope="col">Date</th>
-            <th scope="col">Description</th>
-            <th scope="col">Category</th>
+            <th scope="col">Item</th>
+            <th scope="col">Paid by</th>
             <th scope="col" class="col-method">Method</th>
             <th class="sortable num" data-sort="amount" scope="col">Amount</th>
             <th scope="col" class="col-actions"><span class="sr-only">Actions</span></th>
           </tr>
         </thead>
-        <tbody id="rows"></tbody>
+        <tbody id="rows-payments"></tbody>
         <tfoot>
           <tr>
-            <td colspan="4" class="foot-label">Showing <span id="count">0</span> of <span id="count-all">0</span></td>
-            <td class="num" id="foot-total">—</td>
+            <td colspan="4" class="foot-label">Showing <span id="count-pay">0</span> of <span id="count-pay-all">0</span></td>
+            <td class="num" id="foot-pay-total">—</td>
             <td></td>
           </tr>
         </tfoot>
       </table>
+      <div id="empty-payments" class="empty" hidden></div>
     </div>
-    <div id="empty" class="empty" hidden></div>
   </section>
 
   <footer class="pagefoot">
@@ -118,43 +219,80 @@
   </footer>
 </main>
 
-<!-- ── Add / edit dialog ───────────────────────────────────────────────── -->
-<dialog id="dlg-entry" class="dlg">
-  <form id="form-entry" method="dialog">
-    <h2 class="dlg-title" id="entry-title">Add expense</h2>
+<!-- ── Budget item dialog ──────────────────────────────────────────────── -->
+<dialog id="dlg-item" class="dlg">
+  <form id="form-item" method="dialog">
+    <h2 class="dlg-title" id="item-title">Add budget item</h2>
+    <p class="dlg-note">What a part of the wedding is expected to cost. Payments get recorded against it.</p>
 
     <div class="form-grid">
+      <label class="field field-span">
+        <span class="field-label">Item <em>*</em></span>
+        <input name="name" type="text" required maxlength="80" placeholder="e.g. Catering — dinner">
+      </label>
+      <label class="field">
+        <span class="field-label">Category</span>
+        <select name="category" id="item-category"></select>
+      </label>
+      <label class="field">
+        <span class="field-label">Estimated cost <em>*</em></span>
+        <input name="estimate" type="number" step="0.01" min="0" required inputmode="decimal" placeholder="500000">
+      </label>
+      <label class="field field-span">
+        <span class="field-label">Notes</span>
+        <textarea name="notes" rows="2" maxlength="300" placeholder="Vendor, quote reference, what it covers…"></textarea>
+      </label>
+    </div>
+
+    <p class="dlg-error" id="item-error" hidden></p>
+
+    <div class="dlg-actions">
+      <button type="button" class="btn btn-ghost" data-close>Cancel</button>
+      <button type="submit" class="btn btn-primary" id="item-submit">Save item</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- ── Payment dialog ──────────────────────────────────────────────────── -->
+<dialog id="dlg-pay" class="dlg">
+  <form id="form-pay" method="dialog">
+    <h2 class="dlg-title" id="pay-title">Record a payment</h2>
+
+    <div class="form-grid">
+      <label class="field field-span">
+        <span class="field-label">Towards <em>*</em></span>
+        <select name="itemId" id="pay-item" required></select>
+      </label>
+      <label class="field">
+        <span class="field-label">Amount <em>*</em></span>
+        <input name="amount" type="number" step="0.01" min="0" required inputmode="decimal" placeholder="50000">
+      </label>
       <label class="field">
         <span class="field-label">Date <em>*</em></span>
         <input name="date" type="date" required>
       </label>
       <label class="field">
-        <span class="field-label">Amount <em>*</em></span>
-        <input name="amount" type="number" step="0.01" min="0" required inputmode="decimal" placeholder="0.00">
-      </label>
-      <label class="field field-span">
-        <span class="field-label">Description <em>*</em></span>
-        <input name="description" type="text" required maxlength="120" placeholder="e.g. Team lunch at Ubud">
+        <span class="field-label">Paid by <em>*</em></span>
+        <input name="payer" id="pay-payer" type="text" required maxlength="60"
+               list="payer-list" autocomplete="off" placeholder="e.g. Ramesh (father)">
+        <datalist id="payer-list"></datalist>
       </label>
       <label class="field">
-        <span class="field-label">Category</span>
-        <select name="category" id="entry-category"></select>
-      </label>
-      <label class="field">
-        <span class="field-label">Payment method</span>
-        <select name="method" id="entry-method"></select>
+        <span class="field-label">Method</span>
+        <select name="method" id="pay-method"></select>
       </label>
       <label class="field field-span">
         <span class="field-label">Notes</span>
-        <textarea name="notes" rows="2" maxlength="300" placeholder="Optional"></textarea>
+        <textarea name="notes" rows="2" maxlength="300" placeholder="Advance, second instalment, receipt no…"></textarea>
       </label>
     </div>
 
-    <p class="dlg-error" id="entry-error" hidden></p>
+    <p class="pay-context" id="pay-context" hidden></p>
+    <p class="dlg-error" id="pay-error" hidden></p>
 
     <div class="dlg-actions">
       <button type="button" class="btn btn-ghost" data-close>Cancel</button>
-      <button type="submit" class="btn btn-primary" id="entry-submit">Save expense</button>
+      <button type="submit" class="btn btn-primary" id="pay-submit">Save payment</button>
     </div>
   </form>
 </dialog>
@@ -206,9 +344,9 @@
 <!-- ── Delete confirm ──────────────────────────────────────────────────── -->
 <dialog id="dlg-delete" class="dlg dlg-sm">
   <form method="dialog">
-    <h2 class="dlg-title">Delete this expense?</h2>
+    <h2 class="dlg-title" id="del-title">Delete this?</h2>
     <p class="dlg-body" id="del-summary"></p>
-    <p class="dlg-note">This removes the row from the Excel file and commits the change.</p>
+    <p class="dlg-note" id="del-note"></p>
     <div class="dlg-actions">
       <button type="button" class="btn btn-ghost" data-close>Cancel</button>
       <button type="button" class="btn btn-danger" id="del-confirm">Delete</button>
