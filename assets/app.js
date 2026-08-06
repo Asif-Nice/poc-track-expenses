@@ -27,7 +27,7 @@ const LS = {
   mode: 'wedding-budget.store-mode',
 };
 
-const BUDGET_COLUMNS = ['ID', 'Item', 'Category', 'Estimated', 'Notes'];
+const BUDGET_COLUMNS = ['ID', 'Item', 'Category', 'Estimated', 'Contact', 'Notes'];
 const PAYMENT_COLUMNS = ['ID', 'Item ID', 'Item', 'Date', 'Amount', 'Paid By', 'Payment Method', 'Notes'];
 
 /* Colour carries one job in this app: how much money. Everything is a single
@@ -273,6 +273,7 @@ function parseWorkbook(u8) {
       name: at(['item', 'name', 'description']),
       category: at(['category']),
       estimate: at(['estimated', 'estimate', 'budget', 'estimated cost']),
+      contact: at(['contact', 'contact no', 'contact number', 'phone', 'mobile']),
       notes: at(['notes', 'note']),
     };
     for (const r of budget.body) {
@@ -285,6 +286,8 @@ function parseWorkbook(u8) {
         name: name || 'Untitled item',
         category: str(r, ix.category) || 'Miscellaneous',
         estimate,
+        // A workbook written before this column existed simply has none.
+        contact: str(r, ix.contact),
         notes: str(r, ix.notes),
       });
     }
@@ -317,7 +320,7 @@ function parseWorkbook(u8) {
       // into Excel still lands, and create the item if it is genuinely new.
       let item = byId.get(str(r, ix.itemId)) || byName.get(rawName.toLowerCase());
       if (!item && rawName) {
-        item = { id: newId(), name: rawName, category: 'Miscellaneous', estimate: 0, notes: '' };
+        item = { id: newId(), name: rawName, category: 'Miscellaneous', estimate: 0, contact: '', notes: '' };
         items.push(item);
         byId.set(item.id, item);
         byName.set(item.name.toLowerCase(), item);
@@ -374,7 +377,7 @@ function migrateLegacy(wb) {
     const cat = str(r, ix.category) || 'Miscellaneous';
     let item = byName.get(cat.toLowerCase());
     if (!item) {
-      item = { id: newId(), name: cat, category: cat, estimate: 0, notes: '' };
+      item = { id: newId(), name: cat, category: cat, estimate: 0, contact: '', notes: '' };
       items.push(item);
       byName.set(cat.toLowerCase(), item);
     }
@@ -398,14 +401,19 @@ function buildWorkbook(data) {
 
   /* Budget sheet */
   const bAoa = [BUDGET_COLUMNS];
-  for (const it of items) bAoa.push([it.id, it.name, it.category, Number(it.estimate) || 0, it.notes || '']);
+  for (const it of items) {
+    bAoa.push([it.id, it.name, it.category, Number(it.estimate) || 0, it.contact || '', it.notes || '']);
+  }
   const wsB = XLSX.utils.aoa_to_sheet(bAoa);
   for (let i = 0; i < items.length; i++) {
     const c = wsB[`D${i + 2}`];
     if (c) { c.t = 'n'; c.z = '#,##0.00'; }
+    // Text, not a number — Excel would otherwise eat a leading + or 0.
+    const phone = wsB[`E${i + 2}`];
+    if (phone) { phone.t = 's'; phone.z = '@'; }
   }
-  wsB['!cols'] = [{ wch: 10 }, { wch: 30 }, { wch: 22 }, { wch: 14 }, { wch: 34 }];
-  wsB['!autofilter'] = { ref: `A1:E${Math.max(1, items.length + 1)}` };
+  wsB['!cols'] = [{ wch: 10 }, { wch: 30 }, { wch: 22 }, { wch: 14 }, { wch: 18 }, { wch: 34 }];
+  wsB['!autofilter'] = { ref: `A1:F${Math.max(1, items.length + 1)}` };
 
   /* Payments sheet */
   const pAoa = [PAYMENT_COLUMNS];
@@ -906,7 +914,7 @@ function removePayment(id) {
 
 function createStarterItems() {
   const rows = cfg.starterItems.map((s) => ({
-    id: newId(), name: s.name, category: s.category, estimate: 0, notes: '',
+    id: newId(), name: s.name, category: s.category, estimate: 0, contact: '', notes: '',
   }));
   if (!rows.length) return;
   state.items = state.items.concat(rows);
@@ -922,7 +930,7 @@ function createStarterItems() {
 const itemById = () => new Map(state.items.map((it) => [it.id, it]));
 
 function matchesItem(it, q) {
-  return `${it.name} ${it.category} ${it.notes}`.toLowerCase().includes(q);
+  return `${it.name} ${it.category} ${it.contact || ''} ${it.notes}`.toLowerCase().includes(q);
 }
 
 function matchesPayment(p, itemName, q) {
@@ -1680,6 +1688,7 @@ function renderItemsTable() {
 
     const nameCell = el('td', 'cell-desc');
     nameCell.append(document.createTextNode(r.name));
+    if (r.contact) nameCell.append(contactLink(r.contact));
     if (r.notes) nameCell.append(el('span', 'cell-notes', r.notes));
     tr.append(nameCell);
 
@@ -1795,6 +1804,20 @@ function renderPaymentsTable() {
     tr.append(act);
     tbody.append(tr);
   }
+}
+
+/* Tappable on a phone, which is where you actually want the caterer's number.
+   The dialled digits are stripped of spacing and punctuation; the label keeps
+   whatever was typed, since that is how the user recognises it. */
+function contactLink(contact) {
+  const dial = String(contact).replace(/[^\d+]/g, '');
+  if (!dial) return el('span', 'cell-contact', contact);
+  const a = el('a', 'cell-contact');
+  a.href = `tel:${dial}`;
+  a.textContent = `☏ ${contact}`;
+  a.title = `Call ${contact}`;
+  a.addEventListener('click', (e) => e.stopPropagation());
+  return a;
 }
 
 function iconBtn(glyph, label, onClick) {
@@ -2010,6 +2033,7 @@ function openItem(row) {
   f.name.value = row ? row.name : '';
   f.estimate.value = row ? row.estimate : '';
   fillSelect($('#item-category'), cats, row ? row.category : (state.filters.category || cfg.categories[0]));
+  f.contact.value = row ? (row.contact || '') : '';
   f.notes.value = row ? row.notes : '';
 
   $('#dlg-item').showModal();
@@ -2031,6 +2055,7 @@ function submitItem(e) {
     name,
     category: f.category.value || 'Miscellaneous',
     estimate: Math.round(estimate * 100) / 100,
+    contact: f.contact.value.trim(),
     notes: f.notes.value.trim(),
   };
 

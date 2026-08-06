@@ -51,7 +51,7 @@ Two things, kept on two sheets:
 
 | | |
 |---|---|
-| **Budget item** | something the wedding needs, and what it is expected to cost — *Catering — dinner, ₹5,00,000* |
+| **Budget item** | something the wedding needs, what it is expected to cost, and optionally the vendor's number — *Catering — dinner, ₹5,00,000, +91 98765 43210* |
 | **Payment** | money actually handed over, against one item, by one named person — *₹50,000 by Ramesh (father) on 20 Apr* |
 
 Several people can pay towards the same item, and one person can pay towards many. That
@@ -84,7 +84,7 @@ Each change becomes one commit, and the Pages workflow republishes the site.
 | **Record a payment** | *＋ Payment*, press <kbd>N</kbd>, the ₹ button on any item row, or click that item's bar in the chart |
 | **Edit / delete** | ✎ and 🗑 on any row. Deleting an item removes its payments too, and says so first |
 | **See an item's payments** | ▸ on its row in the *Budget items* table |
-| **Filter** | category, person, or free-text search — one row at the top that scopes every chart and both tables. Clicking a person's bar filters by them |
+| **Filter** | category, person, or free-text search — one row at the top that scopes every chart and both tables. Search covers item names, notes, people, and contact numbers. Clicking a person's bar filters by them |
 | **Sort** | click any *Item*, *Estimated*, *Paid*, *Still to pay*, *Date*, or *Amount* header |
 | **Export / import** | *↓ Export* downloads the workbook as it stands; *↑ Import* loads one back in, replacing what is on screen |
 | **Status** | the pill in the header — it names where things are being saved. Click it to retry a failed save, reconnect the file, or reload |
@@ -132,9 +132,14 @@ Export → Import work between modes and devices.
 
 **Budget**
 
-| ID | Item | Category | Estimated | Notes |
-|---|---|---|---|---|
-| `i7f2a4b1` | Catering — dinner | Food & Catering | 500000.00 | 400 guests |
+| ID | Item | Category | Estimated | Contact | Notes |
+|---|---|---|---|---|---|
+| `i7f2a4b1` | Catering — dinner | Food & Catering | 500000.00 | +91 98765 43210 | 400 guests |
+
+`Contact` is optional — the vendor you ring about that item. It is written as text so Excel
+keeps a leading `+` or `0`, and it shows in the items table as a tap-to-call link, which is
+the point of having it on a phone. A workbook written before this column existed loads
+fine; the field simply comes back empty.
 
 **Payments**
 
