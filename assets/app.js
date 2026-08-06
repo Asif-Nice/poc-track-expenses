@@ -48,7 +48,8 @@ const cfg = (() => {
 })();
 
 const state = {
-  rows: [],
+  rows: [],        // what the UI shows, including changes not yet committed
+  baseRows: null,  // the rows as last committed, paired with sha
   sha: null,
   token: localStorage.getItem(LS.token) || '',
   filters: { month: '', category: '', search: '' },
@@ -353,6 +354,12 @@ function enqueue(op) {
   flush();
 }
 
+// GitHub rejects a PUT whose sha is not the file's current one — that is the
+// signal another writer got there first (or that our cached sha is stale).
+function isConflict(err) {
+  return err.status === 409 || err.status === 422 || /does not match|but expected/i.test(err.message || '');
+}
+
 async function flush() {
   if (flushing || !queue.length || !state.token) return;
   clearTimeout(retryTimer);
@@ -363,13 +370,33 @@ async function flush() {
     while (queue.length) {
       const batch = queue.splice(0, queue.length);
       try {
-        const remote = await fetchViaApi();               // fresh sha each attempt
-        const next = applyOps(remote.rows, batch);
-        state.sha = await putFile(next, remote.sha, commitMessage(batch));
+        // Prefer the sha our own last PUT returned. Re-reading here would cost a
+        // request and can hit a lagging read replica, which returns stale content
+        // with a stale sha — a read we would only have to discard.
+        let base = state.baseRows && state.sha
+          ? { rows: state.baseRows, sha: state.sha }
+          : await fetchViaApi();
+
+        let next = applyOps(base.rows, batch);
+        try {
+          state.sha = await putFile(next, base.sha, commitMessage(batch));
+        } catch (err) {
+          if (!isConflict(err)) throw err;
+          // Someone else wrote in the meantime: take their version and replay
+          // this batch on top, so both sets of changes survive.
+          const fresh = await fetchViaApi();
+          next = applyOps(fresh.rows, batch);
+          state.sha = await putFile(next, fresh.sha, commitMessage(batch));
+          toast('info', 'Merged a change made elsewhere.');
+        }
+
+        state.baseRows = next;
         state.rows = next;
         renderAll();
       } catch (err) {
         queue.unshift(...batch);                          // keep the work
+        state.sha = null;                                 // force a re-read next try
+        state.baseRows = null;
         throw err;
       }
     }
@@ -981,6 +1008,7 @@ async function load() {
       }
     }
     state.rows = result.rows;
+    state.baseRows = result.sha ? result.rows : null;
     state.sha = result.sha;
 
     // Default to the current month when it has data, else the newest month.
