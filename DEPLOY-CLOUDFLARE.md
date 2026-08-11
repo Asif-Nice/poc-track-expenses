@@ -1,8 +1,9 @@
 # Hosting this on Cloudflare Pages
 
-Gives a URL like `https://legendary-umbrella-qj3m23e.pages.dev` instead of
-`https://asif-nice.github.io/poc-track-expenses/`. Free, and it redeploys on every push to
-`main`, exactly like the GitHub Pages workflow does now.
+Gives `https://poc-track-expenses.pages.dev` instead of
+`https://asif-nice.github.io/poc-track-expenses/` — the same name, without your username in
+the address. Free, and it redeploys on every push to `main`, exactly like the GitHub Pages
+workflow does now.
 
 The repo side is already done — `owner`/`repo` are named in `assets/config.js`, so the app
 keeps talking to this repository from any address. The rest is clicking.
@@ -14,13 +15,25 @@ keeps talking to this repository from any address. The rest is clicking.
 **2 · Workers & Pages → Create → Pages → Connect to Git.** Authorise Cloudflare for GitHub
 and pick `Asif-Nice/poc-track-expenses`.
 
-**3 · Name the project.** This *is* the URL — the site ends up at
-`https://<project-name>.pages.dev`. Type whatever random-looking name you want, for example
-`legendary-umbrella-qj3m23e`. Two things to know before you commit to it:
+**3 · Name the project `poc-track-expenses`.** This *is* the URL — the site ends up at
+`https://<project-name>.pages.dev`. Cloudflare pre-fills the repository name, so this one
+needs no typing at all.
 
-- Only lowercase letters, digits and hyphens.
-- **The subdomain cannot be renamed later** — changing it means deleting the project and
-  making a new one. So pick the name you actually want now.
+**The subdomain cannot be renamed later** — changing it means deleting the project and
+making a new one — so if you would rather the address described the app than the repo,
+change it now. These were free when this was written (lowercase, digits and hyphens only;
+Cloudflare tells you at once if a name has since gone):
+
+| Name | URL |
+|---|---|
+| `poc-track-expenses` | `poc-track-expenses.pages.dev` — matches the repo, pre-filled |
+| `our-wedding-budget` | `our-wedding-budget.pages.dev` — says what it is |
+| `track-wedding-expenses` | `track-wedding-expenses.pages.dev` |
+| `shaadi-budget` | `shaadi-budget.pages.dev` |
+| `wedding-kharcha` | `wedding-kharcha.pages.dev` |
+
+The plainer generic ones — `wedding-budget`, `wedding-budget-tracker`,
+`wedding-expense-tracker` — are already taken by other people.
 
 **4 · Build settings — leave everything empty.** There is no build step; the repo is the
 site.
@@ -33,7 +46,7 @@ site.
 | Root directory | *(leave blank)* |
 
 **5 · Save and Deploy.** It takes about a minute. Your site is then at
-`https://<project-name>.pages.dev`.
+`https://poc-track-expenses.pages.dev` (or whichever name you chose).
 
 ## After it is live
 
