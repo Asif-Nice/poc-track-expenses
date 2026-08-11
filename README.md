@@ -6,7 +6,8 @@ server, no database, no build step.
 
 **Live:** https://asif-nice.github.io/poc-track-expenses/
 
-Moving to `https://poc-track-expenses.pages.dev` — see
+Moving to Cloudflare (`poc-track-expenses.pages.dev`, or `.workers.dev` on the Workers
+route) — see
 [DEPLOY-CLOUDFLARE.md](DEPLOY-CLOUDFLARE.md). `owner`/`repo` are named in
 `assets/config.js` rather than detected, so the app works from any host; auto-detection
 only ever worked on a `*.github.io` address.

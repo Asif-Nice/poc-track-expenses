@@ -1,0 +1,11 @@
+# Kept out of the deployed site — repository furniture, not part of the app.
+# Same format as .gitignore. data/expenses.xlsx is deliberately NOT here: the
+# app reads it directly when no token is present, which is the read-only view.
+.git
+.github
+.gitignore
+.gitattributes
+.assetsignore
+wrangler.jsonc
+README.md
+DEPLOY-CLOUDFLARE.md

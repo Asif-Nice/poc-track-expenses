@@ -1,52 +1,93 @@
-# Hosting this on Cloudflare Pages
+# Hosting this on Cloudflare
 
-Gives `https://poc-track-expenses.pages.dev` instead of
-`https://asif-nice.github.io/poc-track-expenses/` — the same name, without your username in
-the address. Free, and it redeploys on every push to `main`, exactly like the GitHub Pages
-workflow does now.
+Free, and it redeploys on every push to `main`, exactly like the GitHub Pages workflow does
+now. There is no build step — the repository *is* the site.
 
-The repo side is already done — `owner`/`repo` are named in `assets/config.js`, so the app
-keeps talking to this repository from any address. The rest is clicking.
+Cloudflare has two products that will do this, and **they are configured differently**. The
+first attempt failed because a Pages instruction was followed in a Workers project:
 
-## What to do
+```
+Executing user deploy command: /
+/bin/sh: 1: /: Permission denied
+Failed: error occurred while running deploy command
+```
 
-**1 · Sign in** at <https://dash.cloudflare.com> (a free account is enough).
+`/` was entered as a **Deploy command**, so Cloudflare tried to *run* `/` as a program.
+Workers has a "Deploy command"; Pages has a "Build output directory". Telling them apart:
 
-**2 · Workers & Pages → Create → Pages → Connect to Git.** Authorise Cloudflare for GitHub
-and pick `Asif-Nice/poc-track-expenses`.
+| Your project shows… | It is | Path to follow |
+|---|---|---|
+| Build command · **Deploy command** · Build token | a **Worker** | A, below |
+| Build command · **Build output directory** | a **Pages** project | B, below |
 
-**3 · Name the project `poc-track-expenses`.** This *is* the URL — the site ends up at
-`https://<project-name>.pages.dev`. Cloudflare pre-fills the repository name, so this one
-needs no typing at all.
+---
 
-**The subdomain cannot be renamed later** — changing it means deleting the project and
-making a new one — so if you would rather the address described the app than the repo,
-change it now. These were free when this was written (lowercase, digits and hyphens only;
-Cloudflare tells you at once if a name has since gone):
+## Path A — fix the Worker you already have
 
-| Name | URL |
+Fewest clicks: the project exists and is already connected to the repository. The repo now
+carries `wrangler.jsonc`, which tells Cloudflare to upload this directory as a static site,
+so nothing needs typing into the build fields.
+
+1. Open the project → **Settings → Build**.
+2. Set the fields to exactly this — the point is that **Deploy command goes back to its
+   default**, and nothing anywhere is `/`:
+
+   | Field | Value |
+   |---|---|
+   | Build command | *(blank)* |
+   | Deploy command | `npx wrangler deploy` |
+   | Root directory | `/` *(this one is a path, and is correct)* |
+
+3. **Retry build.**
+
+Your URL is then `https://poc-track-expenses.<your-subdomain>.workers.dev`.
+
+Note that Workers URLs carry an account-level subdomain that Pages URLs do not. If you have
+not set one, Cloudflare asks you to pick it — whatever you choose appears in the address, so
+choose it with the same care as the project name.
+
+---
+
+## Path B — use Pages instead, for a shorter URL
+
+Gives `https://poc-track-expenses.pages.dev` — no account subdomain. This is the address
+originally aimed for. It needs no files from this repository at all; `wrangler.jsonc` is
+simply ignored.
+
+1. **Workers & Pages → Create** → choose the **Pages** tab → **Connect to Git**.
+   (The Create button lands on Workers by default. The Pages tab is the one you want.)
+2. Pick `Asif-Nice/poc-track-expenses`.
+3. Project name: **`poc-track-expenses`** (pre-filled from the repo).
+4. Build settings — **there is no Deploy command here**:
+
+   | Field | Value |
+   |---|---|
+   | Framework preset | **None** |
+   | Build command | *(blank)* |
+   | Build output directory | `/` |
+
+5. **Save and Deploy.**
+
+If you take this path, delete the broken Worker so the two do not both sit on the repo.
+
+---
+
+## Choosing the name
+
+The subdomain **cannot be renamed later** — changing it means deleting the project and
+making a new one. These were free when checked (lowercase, digits and hyphens only;
+Cloudflare says immediately if one has since gone):
+
+| Name | Gives |
 |---|---|
-| `poc-track-expenses` | `poc-track-expenses.pages.dev` — matches the repo, pre-filled |
-| `our-wedding-budget` | `our-wedding-budget.pages.dev` — says what it is |
-| `track-wedding-expenses` | `track-wedding-expenses.pages.dev` |
-| `shaadi-budget` | `shaadi-budget.pages.dev` |
-| `wedding-kharcha` | `wedding-kharcha.pages.dev` |
+| `poc-track-expenses` | matches the repo, pre-filled |
+| `our-wedding-budget` | says what it is |
+| `track-wedding-expenses` | |
+| `shaadi-budget` | |
+| `wedding-kharcha` | |
 
-The plainer generic ones — `wedding-budget`, `wedding-budget-tracker`,
-`wedding-expense-tracker` — are already taken by other people.
-
-**4 · Build settings — leave everything empty.** There is no build step; the repo is the
-site.
-
-| Field | Value |
-|---|---|
-| Framework preset | **None** |
-| Build command | *(leave blank)* |
-| Build output directory | `/` |
-| Root directory | *(leave blank)* |
-
-**5 · Save and Deploy.** It takes about a minute. Your site is then at
-`https://poc-track-expenses.pages.dev` (or whichever name you chose).
+`wedding-budget`, `wedding-budget-tracker` and `wedding-expense-tracker` are already taken
+by other people.
 
 ## After it is live
 
@@ -55,14 +96,14 @@ per-origin, so the new URL starts out not knowing it — open ⚙ Settings and p
 budget itself is untouched; it lives in the repo, not in the browser.
 
 **Turning the old URL off** (optional). *Repo → Settings → Pages → Source → None*. Do this
-only once the new URL works. You can also delete `.github/workflows/deploy.yml`, though
-leaving it costs nothing and keeps the old address as a fallback.
+only once the new URL works. Leaving it on costs nothing and keeps the old address as a
+fallback.
 
 ## What this does and does not change
 
-- **Does:** your username and the repo name stop appearing in the address.
+- **Does:** your username stops appearing in the address.
 - **Does not:** make the budget private. This repository is public, so `data/expenses.xlsx`
   — the names and the amounts — is still readable by anyone at
-  `github.com/Asif-Nice/poc-track-expenses`, whatever the site address is. A random URL is
+  `github.com/Asif-Nice/poc-track-expenses`, whatever the site address is. A neutral URL is
   obscurity, not privacy. See the Privacy section of `README.md` for the options that
   actually close that.

@@ -1,0 +1,18 @@
+{
+  // Serves this repository as a static site on Cloudflare Workers.
+  //
+  // There is no Worker script and no build step: "assets" alone tells Cloudflare
+  // to upload the directory and serve it, so requests never run any code of ours.
+  // That is why "main" is absent — adding it would ask for a script that does not
+  // exist. The site is the repository, so the directory is the repository root,
+  // and .assetsignore keeps the repo's own furniture out of the upload.
+  //
+  // Only needed for the Workers route. A Cloudflare *Pages* project ignores this
+  // file and is configured entirely in the dashboard.
+  "name": "poc-track-expenses",
+  "compatibility_date": "2026-08-11",
+  "assets": {
+    "directory": ".",
+    "html_handling": "auto-trailing-slash"
+  }
+}
