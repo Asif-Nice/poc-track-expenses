@@ -1,13 +1,14 @@
 /* Wedding Budget Tracker configuration.
  *
- * The workbook lives in this same repository, so owner/repo are left null and
- * detected from the Pages URL (https://<owner>.github.io/<repo>/). Set them
- * explicitly only if you serve the app from a custom domain, open it over
- * file://, or want the data kept in a different repository.
+ * owner/repo are named outright rather than detected. Detection only works on a
+ * *.github.io address, so the moment this is served from anywhere else — a
+ * pages.dev subdomain, a custom domain, a file:// URL — it would come back
+ * empty, the GitHub mode would go unavailable, and saving would quietly stop.
+ * Naming them keeps the app working wherever it is hosted.
  */
 window.EXPENSE_CONFIG = {
-  owner: null,
-  repo: null,
+  owner: 'Asif-Nice',
+  repo: 'poc-track-expenses',
   branch: 'main',
   filePath: 'data/expenses.xlsx',
 

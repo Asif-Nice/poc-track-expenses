@@ -6,6 +6,11 @@ server, no database, no build step.
 
 **Live:** https://asif-nice.github.io/poc-track-expenses/
 
+Moving to a neutral address like `https://<name>.pages.dev` — see
+[DEPLOY-CLOUDFLARE.md](DEPLOY-CLOUDFLARE.md). `owner`/`repo` are named in
+`assets/config.js` rather than detected, so the app works from any host; auto-detection
+only ever worked on a `*.github.io` address.
+
 ## Where your data lives — pick one
 
 Set this in ⚙ Settings. The app works the same either way; only the storage changes.
@@ -177,8 +182,13 @@ figures.
 
 Two ways to change it:
 
-- **Don't use the GitHub mode** — the default, a file on your device, keeps the data off
-  the internet entirely. This is the simplest answer.
+- **Don't use the GitHub mode** — a file on your device keeps the data off the internet
+  entirely. This is the simplest answer.
+- **A different site address does not help.** Hosting the app on `*.pages.dev` or a custom
+  domain hides your username from the URL, nothing more; the workbook is still public in
+  the repository. Privately published GitHub Pages sites (the random `*.pages.github.io`
+  addresses, which do carry a login wall) require an organisation on GitHub Enterprise
+  Cloud, so they are not an option on a personal account.
 - **Split repos** — public repo for the app, private repo for the workbook; point
   `owner`/`repo` in `assets/config.js` at the private one. Free, and the data never touches
   the public site.
@@ -201,8 +211,8 @@ Every edit is a commit, so every edit triggers a deploy. Runs supersede each oth
 
 ```js
 window.EXPENSE_CONFIG = {
-  owner: null,          // null → detected from the Pages URL
-  repo: null,           // null → detected from the Pages URL
+  owner: 'Asif-Nice',   // named, not detected — detection needs a *.github.io host
+  repo: 'poc-track-expenses',
   branch: 'main',
   filePath: 'data/expenses.xlsx',   // GitHub mode only; local modes use the file you pick
   budgetSheet: 'Budget',
